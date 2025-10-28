@@ -1,7 +1,8 @@
 import { parseYMD, ymdUTC } from '../utils/dates.js';
+import { THEMES, DEFAULT_THEME, themeIds } from '../theme/themes.js';
 
+export { THEMES };
 export const STORAGE_KEY = 'nano-forest-v5';
-export const THEMES = ['spruce', 'midnight', 'sunset'];
 
 export const state = {
   project: {
@@ -9,13 +10,14 @@ export const state = {
     goalWords: 50000,
     startDate: new Date(Date.UTC(new Date().getUTCFullYear(), 10, 1)),
     endDate: new Date(Date.UTC(new Date().getUTCFullYear(), 10, 30)),
+    baselineWords: 0,
   },
   entries: {},
   timeWarp: null,
-  theme: 'spruce',
+  theme: DEFAULT_THEME,
 };
 
-export const normalizeTheme = (value) => (THEMES.includes(value) ? value : 'spruce');
+export const normalizeTheme = (value) => (themeIds.includes(value) ? value : DEFAULT_THEME);
 
 export function saveState() {
   localStorage.setItem(
@@ -39,6 +41,7 @@ export function loadState() {
       state.project.goalWords = parsed.project.goalWords ?? state.project.goalWords;
       state.project.startDate = parsed.project.startDate ? new Date(parsed.project.startDate) : state.project.startDate;
       state.project.endDate = parsed.project.endDate ? new Date(parsed.project.endDate) : state.project.endDate;
+      state.project.baselineWords = Number(parsed.project.baselineWords ?? state.project.baselineWords) || 0;
     }
     if (parsed.entries) state.entries = parsed.entries;
     if (parsed.timeWarp) state.timeWarp = parsed.timeWarp;

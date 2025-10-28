@@ -13,26 +13,22 @@
 
   <!-- Header -->
   <div class="headerbar">
-    <div style="flex:1 1 auto;min-width:300px">
-      <h1 class="h1" id="projectTitle">NaNo 2025</h1>
-      <div class="badges">
-        <span class="badge" id="datesBadge">📅 Nov 1 – Nov 30</span>
-        <span class="badge" id="goalBadge">🎯 50,000 words</span>
-        <span class="badge" id="pctBadge">📈 0% complete</span>
+    <div class="header-left">
+      <div class="title-row">
+        <h1 class="h1" id="projectTitle">NaNo 2025</h1>
+        <button id="editProjectBtn" class="icon-btn" aria-label="Edit project settings" title="Edit project">✏️</button>
+      </div>
+      <div class="header-meta">
         <span class="badge" id="viewBadge" style="cursor:pointer" title="Click to preview another day">Date: —</span>
       </div>
     </div>
-    <div class="actions">
+    <div class="header-right">
+      <span id="syncStatus" class="sync-chip" aria-live="polite">Local mode</span>
+      <button id="moreBtn" class="icon-btn" aria-label="More actions" title="More actions">⋯</button>
       <button id="authBtn" class="btn btn-primary">Sign in</button>
       <span id="accountChip" class="badge" style="display:none;cursor:pointer" title="View account">
   🔐 <span id="accountEmail"></span>
 </span>
-      <button id="refreshBtn" class="btn btn-quiet" title="Pull latest data from the cloud" style="display:none">↻ Sync</button>
-      <span id="syncStatus" class="sync-status" aria-live="polite"></span>
-      <button id="exportBtn" class="btn">Export</button>
-      <button id="importBtn" class="btn">Import</button><input id="importInput" type="file" accept="application/json" style="display:none">
-      <button id="editEntriesBtn" class="btn">Edit entries…</button>
-      <button id="openSettings" class="btn" title="Project Settings">⚙️ Settings</button>
     </div>
   </div>
 
@@ -43,39 +39,47 @@
     <button id="dismissAuthBar" class="btn btn-quiet">Not now</button>
   </div>
 
+  <!-- Motivation banner -->
+  <div class="motivation" id="motivationBanner" role="status" aria-live="polite"></div>
+
   <!-- Quick add -->
-  <div class="card" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
-    <div style="min-width:220px;max-width:320px">
-      <label>Words just written</label>
+  <div class="card add-card">
+    <div class="add-fields">
+      <label for="addWords">Words just written</label>
       <input id="addWords" type="number" inputmode="numeric" placeholder="e.g., 347" min="0">
     </div>
-    <button id="addBtn" class="btn btn-primary">Add to Today</button>
-    <button id="undoBtn" class="btn">Undo</button>
+    <div class="add-actions">
+      <button id="addBtn" class="btn btn-primary">Add to today</button>
+      <button id="undoBtn" class="btn btn-quiet">Undo</button>
+    </div>
   </div>
 
-  <!-- Stats -->
-  <div class="card" style="margin-top:14px">
-    <div class="stats" aria-live="polite">
-      <div class="stat"><div class="k">Total</div><div id="total" class="v">0</div></div>
-      <div class="stat">
-        <div class="k">% complete</div>
-        <div class="v" id="pct">0%</div>
-        <div class="progress"><div id="bar" class="bar"></div></div>
+  <!-- Insights -->
+  <div class="insights">
+    <div class="card stats-card" aria-live="polite">
+      <div class="stats">
+        <div class="stat"><div class="k">Total words</div><div id="total" class="v">0</div></div>
+        <div class="stat"><div class="k">Remaining</div><div id="remaining" class="v">0</div></div>
+        <div class="stat"><div class="k">Words today</div><div id="todayWords" class="v">0</div></div>
+        <div class="stat"><div class="k">Needed / day</div><div id="needed" class="v">0</div></div>
       </div>
-      <div class="stat"><div class="k">Remaining</div><div id="remaining" class="v">0</div></div>
+      <div class="stats-secondary">
+        <div class="stat">
+          <div class="k">% complete</div>
+          <div class="v" id="pct">0%</div>
+          <div class="progress"><div id="bar" class="bar"></div></div>
+        </div>
+        <div class="stat"><div class="k">Ideal / day</div><div id="ideal" class="v">0</div></div>
+      </div>
     </div>
-    <div class="stats-secondary">
-      <div class="stat"><div class="k">Words today</div><div id="todayWords" class="v">0</div></div>
-      <div class="stat"><div class="k">Ideal / day</div><div id="ideal" class="v">0</div></div>
-      <div class="stat"><div class="k">Needed / day (to finish)</div><div id="needed" class="v">0</div></div>
-    </div>
-  </div>
 
-  <!-- Chart -->
-  <div class="chartwrap" style="margin-top:14px">
-    <svg id="chart" class="chart" viewBox="0 0 900 400" preserveAspectRatio="none" aria-label="Progress chart"></svg>
-    <div id="tooltip" class="tooltip" role="tooltip" aria-hidden="true"></div>
-    <div class="legend"><span class="kdot" style="background:var(--leaf)"></span> Cumulative <span class="kline"></span> Pace</div>
+    <div class="card chart-card">
+      <div class="chartwrap">
+        <svg id="chart" class="chart" viewBox="0 0 900 400" preserveAspectRatio="none" aria-label="Progress chart"></svg>
+        <div id="tooltip" class="tooltip" role="tooltip" aria-hidden="true"></div>
+        <div class="legend"><span class="kdot" style="background:var(--leaf)"></span> Cumulative <span class="kline"></span> Pace</div>
+      </div>
+    </div>
   </div>
 
   <!-- Settings overlay -->
@@ -91,11 +95,8 @@
           <div style="flex:1 1 160px"><label>Goal words</label><input id="goal" type="number" min="1" value="50000"></div>
           <div style="flex:1 1 160px"><label>Start date</label><input id="start" type="date"></div>
           <div style="flex:1 1 160px"><label>End date</label><input id="end" type="date"></div>
-          <div style="flex:1 1 200px"><label>Theme</label><select id="themeSelect" class="select-input">
-            <option value="spruce">Spruce (default)</option>
-            <option value="midnight">Midnight</option>
-            <option value="sunset">Sunset</option>
-          </select></div>
+          <div style="flex:1 1 200px"><label>Starting words</label><input id="startingWords" type="number" min="0" value="0"></div>
+          <div style="flex:1 1 200px"><label>Theme</label><select id="themeSelect" class="select-input"></select></div>
         </div>
       </div>
       <div class="footer-sticky row" style="justify-content:space-between;gap:8px;margin-top:12px">
@@ -131,6 +132,45 @@
           <input id="warpDate" type="date" aria-describedby="warpHelp">
         </div>
         <p id="warpHelp" style="font-size:13px;color:var(--muted);margin:0">When preview mode is on, totals and pacing update as if it were that date. Adding words targets the previewed day.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions overlay -->
+  <div id="actionsOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="actionsTitle">
+    <div class="panel actions-panel" data-panel tabindex="-1">
+      <div class="sticky row" style="justify-content:space-between;align-items:center">
+        <h3 id="actionsTitle" style="margin:0">Quick actions</h3>
+        <button id="closeActions" class="btn">Close</button>
+      </div>
+      <div class="actions-groups">
+        <section>
+          <h4>Sync &amp; account</h4>
+          <div class="actions-row">
+            <button id="refreshBtn" class="btn btn-quiet">Sync now</button>
+            <span id="drawerSyncStatus" class="sync-chip" aria-live="polite">Local mode</span>
+          </div>
+        </section>
+        <section>
+          <h4>Data</h4>
+          <div class="actions-row">
+            <button id="exportBtn" class="btn">Export</button>
+            <button id="importBtn" class="btn">Import</button>
+            <input id="importInput" type="file" accept="application/json" style="display:none">
+          </div>
+        </section>
+        <section>
+          <h4>Customize</h4>
+          <div class="actions-row">
+            <button id="openSettings" class="btn btn-quiet">Project &amp; theme…</button>
+          </div>
+        </section>
+        <section>
+          <h4>Entries</h4>
+          <div class="actions-row">
+            <button id="editEntriesBtn" class="btn btn-quiet">Edit entries…</button>
+          </div>
+        </section>
       </div>
     </div>
   </div>

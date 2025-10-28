@@ -17,14 +17,14 @@ export function createChartRenderer(chartEl, tooltipEl) {
 
   function renderChart(series, { viewingDay, project, cutoffIndexOverride }) {
     if (!chartEl) return;
-    const { days, daysForChart, daily, cumulative, pace } = series;
+    const { days, daysForChart, daily, cumulative, pace, baseline } = series;
     const W = 820;
     const H = 240;
     const X0 = 90;
     const Y0 = 320;
     const RP = 36;
     const W2 = W - RP;
-    const maxY = Math.max(project.goalWords, ...cumulative, 1);
+    const maxY = Math.max(project.goalWords, ...cumulative, baseline, 1);
     const xCount = daysForChart.length;
     const toPts = (arr) =>
       arr
@@ -36,10 +36,10 @@ export function createChartRenderer(chartEl, tooltipEl) {
         .join(' ');
 
     const vDay = viewingDay();
-    const lastDay = days[days.length - 1];
-    const firstDay = days[0];
+    const lastDay = days.length ? days[days.length - 1] : null;
+    const firstDay = days.length ? days[0] : null;
     let cutoffIndex;
-    if (!vDay) cutoffIndex = 0;
+    if (!vDay || !firstDay || !lastDay) cutoffIndex = 0;
     else if (vDay < firstDay) cutoffIndex = 0;
     else if (vDay > lastDay) cutoffIndex = xCount - 1;
     else cutoffIndex = days.indexOf(vDay) + 1;
@@ -66,11 +66,11 @@ export function createChartRenderer(chartEl, tooltipEl) {
     let xTicks = '';
     let xTickLabels = '';
     const tickEvery = Math.max(1, Math.floor((xCount - 1) / 6));
-    for (let i = 0; i < xCount; i++) {
-      if (i === 0 || i === xCount - 1 || i % tickEvery === 0) {
+    for (let i = 1; i < xCount; i++) {
+      if (i === xCount - 1 || i % tickEvery === 0) {
         const x = X0 + (i / Math.max(1, xCount - 1)) * W2;
         xTicks += `<line x1="${x}" y1="${Y0}" x2="${x}" y2="${Y0 + 6}" stroke="${TICK_COLOR}"/>`;
-        const label = i === 0 ? '0' : fmtMD(days[i - 1]);
+        const label = fmtMD(days[i - 1]);
         xTickLabels += `<text x="${x}" y="${Y0 + 22}" text-anchor="middle" class="axis-tick">${label}</text>`;
       }
     }
@@ -122,8 +122,9 @@ export function createChartRenderer(chartEl, tooltipEl) {
       tooltipEl.style.top = `${yi}px`;
       tooltipEl.style.opacity = '1';
       tooltipEl.setAttribute('aria-hidden', 'false');
-      const label = i === 0 ? 'Start' : fmtMD(days[i - 1]);
-      const added = i === 0 ? 0 : daily[i - 1] || 0;
+      const isBaseline = i === 0;
+      const label = isBaseline ? 'Starting words' : fmtMD(days[i - 1]);
+      const added = isBaseline ? null : daily[i - 1] || 0;
       tooltipEl.innerHTML = stackedTooltipHTML(label, added, cumulative[i], pace[i]);
     };
 
@@ -152,7 +153,7 @@ export function createChartRenderer(chartEl, tooltipEl) {
 function stackedTooltipHTML(label, added, total, paceValue) {
   return `
   <div class="tt-title">${label}</div>
-  <div class="tt-row"><span>Added</span><strong>${(added || 0).toLocaleString()}</strong></div>
+  <div class="tt-row"><span>Added</span><strong>${added === null ? '—' : (added || 0).toLocaleString()}</strong></div>
   <div class="tt-row"><span>Total</span><strong>${(total || 0).toLocaleString()}</strong></div>
   <div class="tt-row"><span>Pace</span><strong>${(paceValue || 0).toLocaleString()}</strong></div>`;
 }

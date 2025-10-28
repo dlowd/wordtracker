@@ -6,6 +6,7 @@ import {
   normalizeTheme,
   STORAGE_KEY,
   inRange,
+  THEMES,
 } from '../state/state.js';
 import { elements, requireElement } from '../ui/dom.js';
 import { flashToast } from '../ui/toast.js';
@@ -19,12 +20,10 @@ import {
   setupTimeWarp,
 } from '../features/timeWarp.js';
 import {
-  pad,
   ymdUTC,
   parseYMD,
   datesInRangeUTC,
   fmtMD,
-  fmtRange,
 } from '../utils/dates.js';
 import { createChartRenderer } from '../ui/chart.js';
 
@@ -33,6 +32,7 @@ let entryInputRefs = {};
 let serverEntriesSnapshot = {};
 const syncTimers = {};
 let lastSyncedAt = null;
+let syncStatusInterval = null;
 
 let projectId = null;
 let realtimeSub = null;
@@ -42,6 +42,7 @@ const chartRenderer = createChartRenderer(elements.chart, elements.tooltip);
 export function initApp() {
   loadState();
   initTimeWarpState();
+  populateThemeSelect();
   applyTheme();
   bindEvents();
   update();
@@ -76,6 +77,9 @@ function bindEvents() {
     sendLinkBtn,
     signOutBtn,
     accountChip,
+    moreBtn,
+    closeActions,
+    editProjectBtn,
   } = elements;
 
   addButton?.addEventListener('click', onAddWords);
@@ -86,20 +90,27 @@ function bindEvents() {
   document.addEventListener('keydown', onGlobalUndo);
 
   editEntriesBtn?.addEventListener('click', () => {
+    closeOverlay(elements.actionsOverlay);
     renderEntries();
     openOverlay(elements.drawer);
   });
   closeEntries?.addEventListener('click', () => closeOverlay(elements.drawer));
   closeEntries2?.addEventListener('click', () => closeOverlay(elements.drawer));
 
-  openSettings?.addEventListener('click', () => {
+  const openSettingsPanel = () => {
+    closeOverlay(elements.actionsOverlay);
     if (elements.nameInput) elements.nameInput.value = state.project.name;
     if (elements.goalInput) elements.goalInput.value = state.project.goalWords;
     if (elements.startInput) elements.startInput.value = ymdUTC(state.project.startDate);
     if (elements.endInput) elements.endInput.value = ymdUTC(state.project.endDate);
+    if (elements.startingWordsInput)
+      elements.startingWordsInput.value = String(state.project.baselineWords ?? 0);
     if (elements.themeSelect) elements.themeSelect.value = state.theme;
     openOverlay(elements.settingsPanel);
-  });
+  };
+
+  openSettings?.addEventListener('click', openSettingsPanel);
+  editProjectBtn?.addEventListener('click', openSettingsPanel);
   saveSettings?.addEventListener('click', onSaveSettings);
   closeSettings?.addEventListener('click', () => closeOverlay(elements.settingsPanel));
   closeSettings2?.addEventListener('click', () => closeOverlay(elements.settingsPanel));
@@ -109,6 +120,12 @@ function bindEvents() {
   importInput?.addEventListener('change', onImportData);
 
   refreshBtn?.addEventListener('click', refreshFromServer);
+
+  moreBtn?.addEventListener('click', () => {
+    updateSyncStatus();
+    openOverlay(elements.actionsOverlay);
+  });
+  closeActions?.addEventListener('click', () => closeOverlay(elements.actionsOverlay));
 
   authBtn?.addEventListener('click', () => openOverlay(elements.loginPanel));
   accountChip?.addEventListener('click', () => openOverlay(elements.loginPanel));
@@ -132,6 +149,12 @@ function bindEvents() {
     },
     update
   );
+}
+
+function populateThemeSelect() {
+  if (!elements.themeSelect) return;
+  elements.themeSelect.innerHTML = THEMES.map(({ id, label }) => `<option value="${id}">${label}</option>`).join('');
+  elements.themeSelect.value = state.theme;
 }
 
 function onAddWords() {
@@ -198,13 +221,15 @@ function computeSeries() {
   const start = ymdUTC(state.project.startDate);
   const end = ymdUTC(state.project.endDate);
   const days = datesInRangeUTC(start, end);
-  const daysForChart = ['0', ...days];
+  const baseline = Number(state.project.baselineWords || 0);
+  const remainingTarget = Math.max(0, state.project.goalWords - baseline);
   const daily = days.map((d) => Number(state.entries[d] || 0));
-  let sum = 0;
-  const cumulative = [0, ...daily.map((w) => (sum += w))];
-  const idealPerDay = Math.ceil(state.project.goalWords / Math.max(1, days.length));
-  const pace = [0, ...days.map((_, i) => Math.min(state.project.goalWords, idealPerDay * (i + 1)))];
-  return { days, daysForChart, daily, cumulative, pace, idealPerDay };
+  let sum = baseline;
+  const cumulative = [baseline, ...daily.map((w) => (sum += w))];
+  const idealPerDay = days.length > 0 ? Math.ceil(remainingTarget / Math.max(1, days.length)) : remainingTarget;
+  const pace = [baseline, ...days.map((_, i) => Math.min(state.project.goalWords, baseline + idealPerDay * (i + 1)))];
+  const daysForChart = ['baseline', ...days];
+  return { days, daysForChart, daily, cumulative, pace, idealPerDay, baseline, remainingTarget };
 }
 
 function cutoffIndexForViewing(days) {
@@ -220,23 +245,11 @@ function wordsOn(ymd, series) {
   return idx >= 0 ? series.daily[idx] : 0;
 }
 
-function renderHeader(series) {
-  const cut = cutoffIndexForViewing(series.days);
-  const total = series.cumulative[cut] ?? 0;
-  const pct = Math.min(100, Math.round((total / Math.max(1, state.project.goalWords)) * 100));
+function renderHeader() {
   const vDay = viewingDay();
   if (elements.projectTitle) {
     elements.projectTitle.textContent = state.project.name || 'NaNo Project';
     document.title = `${elements.projectTitle.textContent} — NaNo Word Tracker`;
-  }
-  if (elements.datesBadge) {
-    elements.datesBadge.textContent = `📅 ${fmtRange(ymdUTC(state.project.startDate), ymdUTC(state.project.endDate))}`;
-  }
-  if (elements.goalBadge) {
-    elements.goalBadge.textContent = `🎯 ${state.project.goalWords.toLocaleString()} words`;
-  }
-  if (elements.pctBadge) {
-    elements.pctBadge.textContent = `📈 ${pct}% complete`;
   }
   if (elements.viewBadge) {
     const prefix = state.timeWarp ? '⏳ ' : '';
@@ -245,19 +258,29 @@ function renderHeader(series) {
 }
 
 function renderStats(series) {
-  const { days, cumulative, idealPerDay } = series;
+  const { days, cumulative, idealPerDay, baseline } = series;
   const cut = cutoffIndexForViewing(days);
-  const total = cumulative[cut] ?? 0;
-  const pct = Math.min(100, Math.round((total / Math.max(1, state.project.goalWords)) * 100));
+  const total = cumulative[cut] ?? baseline;
+  const pct = state.project.goalWords > 0
+    ? Math.min(100, Math.round((total / Math.max(1, state.project.goalWords)) * 100))
+    : 0;
   const remaining = Math.max(0, state.project.goalWords - total);
   const todayW = wordsOn(viewingDay(), series);
-  const today = parseYMD(viewingDay());
-  const elapsed = Math.min(
-    days.length,
-    Math.max(0, Math.floor((today - parseYMD(days[0])) / 86400000) + 1)
-  );
-  const daysLeft = Math.max(0, days.length - elapsed);
-  const needed = Math.max(0, Math.ceil((state.project.goalWords - total) / Math.max(1, daysLeft)));
+
+  let elapsed = 0;
+  let daysLeft = days.length;
+  if (days.length > 0) {
+    const today = parseYMD(viewingDay());
+    const start = parseYMD(days[0]);
+    const end = parseYMD(days[days.length - 1]);
+    if (today >= start) {
+      const clamp = today > end ? end : today;
+      elapsed = Math.min(days.length, Math.floor((clamp - start) / 86400000) + 1);
+      daysLeft = Math.max(0, days.length - elapsed);
+    }
+  }
+
+  const needed = remaining === 0 ? 0 : Math.max(0, Math.ceil(remaining / Math.max(1, daysLeft)));
 
   if (elements.totalEl) elements.totalEl.textContent = total.toLocaleString();
   if (elements.pctEl) elements.pctEl.textContent = `${pct}%`;
@@ -269,6 +292,64 @@ function renderStats(series) {
     elements.neededEl.textContent = needed.toLocaleString();
     elements.neededEl.style.color = needed > idealPerDay ? 'var(--warn-ink)' : 'var(--ok-ink)';
   }
+}
+
+function updateMotivationBanner(series) {
+  if (!elements.motivationBanner) return;
+  const banner = elements.motivationBanner;
+  const { days, cumulative, idealPerDay, baseline } = series;
+
+  if (days.length === 0) {
+    banner.textContent = 'Set a project start and end date to begin tracking.';
+    return;
+  }
+
+  const today = new Date();
+  const start = parseYMD(days[0]);
+  const end = parseYMD(days[days.length - 1]);
+  const totalDays = days.length;
+  const totalWritten = cumulative[cumulative.length - 1] ?? baseline;
+
+  if (today < start) {
+    const daysUntil = Math.ceil((start - today) / 86400000);
+    banner.textContent = `Sprint starts in ${daysUntil} day${daysUntil === 1 ? '' : 's'} • Goal ${state.project.goalWords.toLocaleString()} words`;
+    return;
+  }
+
+  if (today > end) {
+    banner.textContent = `Sprint finished • ${totalWritten.toLocaleString()} words written`;
+    return;
+  }
+
+  const todayYMD = ymdUTC(today);
+  const dayIndex = days.indexOf(todayYMD);
+  const dayNumber = dayIndex === -1 ? Math.min(totalDays, Math.floor((today - start) / 86400000) + 1) : dayIndex + 1;
+  const clampedDay = Math.min(totalDays, Math.max(1, dayNumber));
+  const actualTotal = dayIndex === -1 ? cumulative[Math.min(cumulative.length - 1, clampedDay)] : cumulative[dayIndex + 1];
+
+  if (state.project.goalWords <= baseline) {
+    banner.textContent = `Goal reached! • ${actualTotal.toLocaleString()} words`; 
+    return;
+  }
+
+  const elapsedForPace = clampedDay;
+  const expected = baseline + idealPerDay * elapsedForPace;
+  const ideal = idealPerDay || 1;
+  const aheadDays = (actualTotal - expected) / ideal;
+
+  let statusText;
+  if (idealPerDay === 0) {
+    statusText = 'Goal reached!';
+  } else if (aheadDays > 0.75) {
+    statusText = `Ahead by ${aheadDays.toFixed(1)} day${aheadDays >= 1.75 ? 's' : ''}`;
+  } else if (aheadDays < -0.75) {
+    const behind = Math.abs(aheadDays);
+    statusText = `Behind by ${behind.toFixed(1)} day${behind >= 1.75 ? 's' : ''}`;
+  } else {
+    statusText = 'On pace';
+  }
+
+  banner.textContent = `Day ${clampedDay} of ${totalDays} • ${statusText} • ${actualTotal.toLocaleString()} words`;
 }
 
 function renderEntries() {
@@ -321,7 +402,7 @@ function applyTheme(nextTheme = state.theme) {
   const theme = normalizeTheme(nextTheme);
   state.theme = theme;
   document.body.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme === 'midnight' ? 'dark' : 'light';
+  document.documentElement.style.colorScheme = ['midnight', 'charcoal'].includes(theme) ? 'dark' : 'light';
 }
 
 function setAddEnabled() {
@@ -337,25 +418,34 @@ function update() {
   syncTimeWarpControls(elements.warpToggle, elements.warpDate, elements.viewBadge);
   updateCurrentDateDisplay(elements.currentDateInfo);
   const series = computeSeries();
-  renderHeader(series);
+  renderHeader();
   renderStats(series);
+  updateMotivationBanner(series);
   chartRenderer.renderChart(series, { viewingDay, project: state.project });
   setAddEnabled();
   saveState();
   updateSyncStatus();
 }
 
+function refreshSyncLabel() {
+  const label = isRemote()
+    ? lastSyncedAt ? `Synced ${formatRelative(lastSyncedAt)}` : 'Not synced yet'
+    : 'Local mode';
+  if (elements.syncStatus) elements.syncStatus.textContent = label;
+  if (elements.drawerSyncStatus) elements.drawerSyncStatus.textContent = label;
+}
+
 function updateSyncStatus() {
-  if (!elements.syncStatus) return;
-  if (isRemote()) {
-    const label = lastSyncedAt ? `Synced ${formatRelative(lastSyncedAt)}` : 'Not synced yet';
-    elements.syncStatus.textContent = label;
-    elements.refreshBtn && (elements.refreshBtn.style.display = 'inline-flex');
-  } else {
-    elements.syncStatus.textContent = 'Local mode';
-    if (elements.refreshBtn) {
-      elements.refreshBtn.style.display = 'none';
+  refreshSyncLabel();
+  if (!isRemote() || !lastSyncedAt) {
+    if (syncStatusInterval) {
+      clearInterval(syncStatusInterval);
+      syncStatusInterval = null;
     }
+    return;
+  }
+  if (!syncStatusInterval) {
+    syncStatusInterval = setInterval(refreshSyncLabel, 60000);
   }
 }
 
@@ -378,6 +468,10 @@ function onSaveSettings() {
   }
   if (elements.startInput?.value) state.project.startDate = parseYMD(elements.startInput.value);
   if (elements.endInput?.value) state.project.endDate = parseYMD(elements.endInput.value);
+  if (elements.startingWordsInput) {
+    const baseline = Number(elements.startingWordsInput.value || 0);
+    state.project.baselineWords = Number.isNaN(baseline) ? 0 : Math.max(0, baseline);
+  }
   if (elements.themeSelect) state.theme = normalizeTheme(elements.themeSelect.value);
   closeOverlay(elements.settingsPanel);
   update();
@@ -480,15 +574,15 @@ async function onSignOut() {
 
 function updateAuthUI() {
   const signedIn = !!user;
-  if (elements.authBtn) elements.authBtn.textContent = signedIn ? 'Account' : 'Sign in';
+  if (elements.authBtn) {
+    elements.authBtn.textContent = 'Sign in';
+    elements.authBtn.style.display = signedIn ? 'none' : 'inline-flex';
+  }
   if (elements.loginTitle) elements.loginTitle.textContent = signedIn ? 'Account' : 'Sign in to sync (optional)';
   if (elements.signOutBtn) elements.signOutBtn.style.display = signedIn ? 'inline-flex' : 'none';
   if (elements.signInPane) elements.signInPane.style.display = signedIn ? 'none' : 'block';
   if (elements.signedInPane) elements.signedInPane.style.display = signedIn ? 'block' : 'none';
-  if (elements.refreshBtn) {
-    elements.refreshBtn.style.display = signedIn ? 'inline-flex' : 'none';
-    elements.refreshBtn.disabled = !signedIn;
-  }
+  if (elements.refreshBtn) elements.refreshBtn.disabled = !signedIn;
   if (signedIn) {
     if (elements.authBar) elements.authBar.style.display = 'none';
     if (elements.accountChip) {
@@ -515,6 +609,7 @@ async function bootAfterAuth() {
   state.project.goalWords = project.goal_words;
   state.project.startDate = new Date(project.start_date);
   state.project.endDate = new Date(project.end_date);
+  state.project.baselineWords = project.baseline_words ?? 0;
   await loadEvents();
   subscribeRealtime();
   update();
@@ -535,6 +630,7 @@ async function getOrCreateProject() {
     goal_words: state.project.goalWords,
     start_date: ymdUTC(state.project.startDate),
     end_date: ymdUTC(state.project.endDate),
+    baseline_words: state.project.baselineWords,
   };
   const { data: created, error: insertError } = await supabase.from('projects').insert(payload).select().single();
   if (insertError) throw insertError;
@@ -615,6 +711,7 @@ async function syncProjectSettings() {
     goal_words: state.project.goalWords,
     start_date: ymdUTC(state.project.startDate),
     end_date: ymdUTC(state.project.endDate),
+    baseline_words: state.project.baselineWords,
   };
   const { error } = await supabase.from('projects').update(payload).eq('id', projectId);
   if (error) throw error;
@@ -628,6 +725,7 @@ async function fetchProjectState() {
   state.project.goalWords = data.goal_words;
   state.project.startDate = new Date(data.start_date);
   state.project.endDate = new Date(data.end_date);
+  state.project.baselineWords = data.baseline_words ?? 0;
 }
 
 async function refreshFromServer() {
@@ -650,7 +748,7 @@ async function refreshFromServer() {
   } finally {
     if (elements.refreshBtn) {
       elements.refreshBtn.disabled = false;
-      elements.refreshBtn.textContent = '↻ Sync';
+      elements.refreshBtn.textContent = 'Sync now';
     }
   }
 }

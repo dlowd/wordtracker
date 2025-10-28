@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NaNo Word Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --fg:#0f172a; --muted:#64748b; --border:#e2e8f0; --bg:#f8fafc;
+    --leaf:#16a34a; --pace:#9ca3af;
+    --warn:#f59e0b; --warn-ink:#7c2d12; --ok:#16a34a; --ok-ink:#064e3b;
+    --card:#ffffff; --shadow:0 6px 16px rgba(2,6,23,.06);
+    --warp-bg:#eef2ff; --warp-border:#c7d2fe; --warp-ink:#3730a3;
+    --accent:#10b981; --danger:#ef4444;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial; color:var(--fg);
+    background:linear-gradient(180deg,#f0fdf4,#f8fafc 120vh);
+  }
+  .wrap{max-width:1000px;margin:0 auto;padding:16px}
+
+  /* Header */
+  .h1{font-family:"Literata",serif;font-weight:800;font-size:28px;letter-spacing:.2px;margin:0}
+  .badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:#ecfdf5;color:#065f46;border:1px solid #bbf7d0;font-size:12px}
+  .badge-warp{background:var(--warp-bg); border-color:var(--warp-border); color:var(--warp-ink)}
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between}
+  .headerbar{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px}
+  .actions{display:flex;gap:8px;align-items:center}
+  @media (max-width:720px){.headerbar{grid-template-columns:1fr}.actions{justify-self:start}}
+  .btn{border:1px solid var(--border);background:#fff;padding:10px 12px;border-radius:10px;cursor:pointer}
+  .btn:hover{border-color:#cbd5e1}
+  .btn-primary{background:linear-gradient(180deg,#22c55e,#16a34a);color:#fff;border-color:transparent}
+  .btn-primary:hover{filter:brightness(.98)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-primary:disabled{filter:grayscale(.2) brightness(.95)}
+  .btn-quiet{background:#fff;border-color:#e2e8f0;color:#334155}
+  .btn-danger{background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d}
+  .btn-danger:hover{filter:brightness(.98)}
+
+  /* Time Warp UI */
+  .warp{margin-left:auto;display:inline-flex;align-items:center;gap:8px;padding:4px 8px;border-radius:999px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:12px}
+  .warp-title{display:inline-flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap}
+  .warp input[type="checkbox"]{vertical-align:middle}
+  .warp input[type="date"]{min-width:140px}
+  @media (max-width:560px){.warp{flex-wrap:wrap;row-gap:8px}.warp-title{flex:1 0 100%}}
+
+  /* Cards & inputs */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;box-shadow:var(--shadow)}
+  label{display:block;font-size:14px;color:#334155;margin-bottom:6px;font-weight:600}
+  input[type="text"],input[type="number"],input[type="date"],input[type="email"]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#fff}
+
+  /* Stats */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .stats-secondary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+  .stat{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:var(--shadow)}
+  .k{font-size:13px;color:#334155;font-weight:600}
+  .v{font-size:24px;font-weight:800}
+  .progress{height:10px;background:#eef2f7;border:1px solid var(--border);border-radius:999px;overflow:hidden;margin-top:8px}
+  .bar{height:100%;background:linear-gradient(90deg,#86efac,#16a34a);width:0%}
+
+  /* Chart */
+  .chartwrap{position:relative}
+  .chart{width:100%;height:340px;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)}
+  .legend{display:flex;gap:12px;align-items:center;font-size:12px;color:#64748b;margin-top:8px}
+  .kdot{width:10px;height:10px;border-radius:999px;display:inline-block}
+  .kline{width:16px;height:0;border-top:2px dotted var(--pace);display:inline-block}
+  .tooltip{position:absolute;pointer-events:none;background:#0b1210;color:#fff;font-size:12px;padding:8px 10px;border-radius:10px;transform:translate(-50%,-110%);opacity:0;box-shadow:0 6px 20px rgba(2,6,23,.18); min-width:140px}
+  .tt-title{font-weight:800;margin-bottom:4px}
+  .tt-row{display:flex;justify-content:space-between;gap:8px}
+  .axis-label{font-size:12px;fill:#475569}
+  .axis-tick{font-size:12px;fill:#475569}
+  .axis-title{font-size:16px;font-weight:800;fill:#0f172a}
+  .chart-title{font-size:16px;font-weight:700;fill:#0f172a}
+
+  /* Overlays (Settings, Entries, Login) */
+  .overlay{position:fixed; inset:0; display:none; align-items:center; justify-content:flex-end; background:rgba(2,6,23,.35); z-index:1000}
+  .overlay.show{display:flex}
+  .panel{width:min(640px,95vw); max-height:100vh; overflow:auto; background:#fff; border-left:1px solid var(--border); box-shadow:-12px 0 40px rgba(2,6,23,.12); padding:16px}
+  .sticky{position:sticky; top:0; background:#fff; padding-bottom:8px; border-bottom:1px solid var(--border); z-index:2}
+  .footer-sticky{position:sticky; bottom:0; background:#fff; padding-top:8px; border-top:1px solid var(--border); z-index:2}
+
+  /* Entries list */
+  .entries{display:grid;grid-template-columns:150px 1fr;gap:8px}
+  .rowlabel{padding:6px 0;font-size:13px;color:#334155}
+  .jump{display:flex;gap:8px;align-items:center}
+
+  /* Toast */
+  .toast{position:fixed; left:50%; bottom:18px; transform:translateX(-50%); background:#064e3b; color:#fff; padding:10px 14px; border-radius:12px; box-shadow:var(--shadow); font-size:14px; opacity:0; transition:opacity .2s, transform .2s}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(-4px)}
+
+  /* Auth banner */
+  .authbar{display:flex;align-items:center;gap:10px;background:#ecfeff;border:1px solid #bae6fd;padding:10px 12px;border-radius:12px;box-shadow:var(--shadow);margin-top:14px}
+  .authbar strong{color:#0c4a6e}
+
+  @media (max-width:920px){.stats, .stats-secondary {grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <div class="headerbar">
+    <div style="flex:1 1 auto;min-width:300px">
+      <h1 class="h1" id="projectTitle">NaNo 2025</h1>
+      <div class="badges">
+        <span class="badge" id="datesBadge">📅 Nov 1 – Nov 30</span>
+        <span class="badge" id="goalBadge">🎯 50,000 words</span>
+        <span class="badge" id="pctBadge">📈 0% complete</span>
+        <span class="badge" id="viewBadge">Date: —</span>
+        <span class="badge badge-warp" id="warpOnBadge" style="display:none">⏳ Time Warp on</span>
+      </div>
+    </div>
+    <div class="actions">
+      <span id="accountChip" class="badge" style="display:none;cursor:pointer" title="View account">
+  🔐 <span id="accountEmail"></span>
+</span>
+      <button id="exportBtn" class="btn">Export</button>
+      <button id="importBtn" class="btn">Import</button><input id="importInput" type="file" accept="application/json" style="display:none">
+      <button id="editEntriesBtn" class="btn">Edit entries…</button>
+      <button id="openSettings" class="btn" title="Project Settings">⚙️ Settings</button>
+    </div>
+  </div>
+
+  <!-- Optional auth prompt -->
+  <div id="authbar" class="authbar" style="display:none">
+    <span>🔒 <strong>Optional sign‑in:</strong> Sync across devices and back up your data.</span>
+    <button id="authBarBtn" class="btn btn-primary">Sign in</button>
+    <button id="dismissAuthBar" class="btn btn-quiet">Not now</button>
+  </div>
+
+  <!-- Quick add -->
+  <div class="card" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+    <div style="min-width:220px;max-width:320px">
+      <label>Words just written</label>
+      <input id="addWords" type="number" inputmode="numeric" placeholder="e.g., 347" min="0">
+    </div>
+    <button id="addBtn" class="btn btn-primary">Add to Today</button>
+    <button id="undoBtn" class="btn">Undo</button>
+
+    <!-- Time Warp control -->
+    <div class="warp" title="Preview stats as if it were another day (what‑if planning)">
+      <span class="warp-title">⏳ <span>Time Warp</span></span>
+      <input id="warpToggle" type="checkbox" aria-label="Enable Time Warp">
+      <input id="warpDate" type="date" aria-label="Time Warp date">
+      <button id="warpToday" class="btn btn-quiet" style="padding:6px 10px">Today</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="card" style="margin-top:14px">
+    <div class="stats" aria-live="polite">
+      <div class="stat"><div class="k">Total</div><div id="total" class="v">0</div></div>
+      <div class="stat">
+        <div class="k">% complete</div>
+        <div class="v" id="pct">0%</div>
+        <div class="progress"><div id="bar" class="bar"></div></div>
+      </div>
+      <div class="stat"><div class="k">Remaining</div><div id="remaining" class="v">0</div></div>
+    </div>
+    <div class="stats-secondary">
+      <div class="stat"><div class="k">Words today</div><div id="todayWords" class="v">0</div></div>
+      <div class="stat"><div class="k">Ideal / day</div><div id="ideal" class="v">0</div></div>
+      <div class="stat"><div class="k">Needed / day (to finish)</div><div id="needed" class="v">0</div></div>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div class="chartwrap" style="margin-top:14px">
+    <svg id="chart" class="chart" viewBox="0 0 900 400" preserveAspectRatio="none" aria-label="Progress chart"></svg>
+    <div id="tooltip" class="tooltip" role="tooltip" aria-hidden="true"></div>
+    <div class="legend"><span class="kdot" style="background:var(--leaf)"></span> Cumulative <span class="kline"></span> Pace</div>
+  </div>
+
+  <!-- Settings overlay -->
+  <div id="settings" class="overlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="panel" data-panel tabindex="-1">
+      <div class="sticky row" style="justify-content:space-between">
+        <h3 id="settingsTitle" style="margin:0">Project Settings</h3>
+        <button id="closeSettings" class="btn">Close</button>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="row" style="gap:12px;flex-wrap:wrap">
+          <div style="flex:1 1 260px"><label>Project name</label><input id="name" type="text" value="NaNo 2025"></div>
+          <div style="flex:1 1 160px"><label>Goal words</label><input id="goal" type="number" min="1" value="50000"></div>
+          <div style="flex:1 1 160px"><label>Start date</label><input id="start" type="date"></div>
+          <div style="flex:1 1 160px"><label>End date</label><input id="end" type="date"></div>
+        </div>
+      </div>
+      <div class="footer-sticky row" style="justify-content:space-between;gap:8px;margin-top:12px">
+        <button id="resetAllBtn" class="btn btn-danger">Reset all data</button>
+        <div class="actions">
+          <button id="saveSettings" class="btn btn-primary">Save</button>
+          <button id="closeSettings2" class="btn btn-quiet">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Entries overlay -->
+  <div id="drawer" class="overlay" role="dialog" aria-modal="true" aria-labelledby="entriesTitle">
+    <div class="panel" data-panel tabindex="-1">
+      <div class="sticky row" style="justify-content:space-between;align-items:center">
+        <h3 id="entriesTitle" style="margin:0">Daily entries</h3>
+        <div class="jump">
+          <label for="jumpDate" class="k">Jump to</label>
+          <select id="jumpDate" class="btn-quiet" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border)"></select>
+        </div>
+        <button id="closeEntries" class="btn">Close</button>
+      </div>
+      <div id="entries" class="entries" style="margin-top:10px"></div>
+      <div class="footer-sticky row" style="justify-content:flex-end;gap:8px;margin-top:12px">
+        <button id="closeEntries2" class="btn btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login overlay (magic link) -->
+  <div id="login" class="overlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+    <div class="panel" data-panel tabindex="-1">
+      <div class="sticky row" style="justify-content:space-between">
+        <h3 id="loginTitle" style="margin:0">Sign in to sync (optional)</h3>
+        <button id="closeLogin" class="btn">Close</button>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <label>Email for magic link</label>
+        <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button id="sendLink" class="btn btn-primary">Send magic link</button>
+          <button id="signOut" class="btn" style="display:none">Sign out</button>
+          <div id="acctInfo" style="margin-top:8px;font-size:13px;color:var(--muted);display:none">
+  Signed in as <strong id="acctEmail"></strong>
+</div>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-top:10px">You can keep using the app without signing in. Sign in only if you want cloud backup and multi‑device sync.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+</div>
+
+<!-- Supabase client (public) -->
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+"use strict";
+/* ====== Config ====== */
+const SUPABASE_URL = "https://vvpchcbdlolxfsohbdoa.supabase.co"; // ← fill in when you enable cloud sync
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2cGNoY2JkbG9seGZzb2hiZG9hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2MDU0MzYsImV4cCI6MjA3NzE4MTQzNn0.QebYxexbof8XXhyG3t2iySKJfkahJb5GGNi23SUcg3E"; // ← fill in when you enable cloud sync
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+let user = null; // set after auth
+
+/* ====== UTC Date utils ====== */
+const pad=n=>String(n).padStart(2,'0');
+const ymdUTC=d=>`${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}`;
+function parseYMD(s){ const [Y,M,D]=String(s||'').split('-').map(Number); return new Date(Date.UTC(Y||0,(M||1)-1,D||1)); }
+function datesInRangeUTC(a,b){ const out=[]; let d=parseYMD(a), e=parseYMD(b); while(d<=e){ out.push(ymdUTC(d)); d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()+1)); } return out; }
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtMD(ymd){ const [Y,M,D]=ymd.split('-').map(Number); return `${MONTHS[M-1]} ${D}`; }
+function fmtRange(a,b){ const [y1,m1,d1]=a.split('-').map(Number); const [y2,m2,d2]=b.split('-').map(Number); return `${MONTHS[m1-1]} ${d1} – ${MONTHS[m2-1]} ${d2}`; }
+
+/* ====== State ====== */
+const STORAGE_KEY="nano-forest-v5"; // bump version
+let state={ project:{
+  name:"NaNo 2025",
+  goalWords:50000,
+  startDate:new Date(Date.UTC(new Date().getUTCFullYear(),10,1)),
+  endDate:new Date(Date.UTC(new Date().getUTCFullYear(),10,30))
+}, entries:{}, timeWarp:null };
+
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify({project:state.project,entries:state.entries,timeWarp:state.timeWarp})); }
+function load(){ const raw=localStorage.getItem(STORAGE_KEY); if(!raw) return; try{ const o=JSON.parse(raw); if(o.project){ state.project.name=o.project.name ?? state.project.name; state.project.goalWords=o.project.goalWords ?? state.project.goalWords; state.project.startDate=new Date(o.project.startDate); state.project.endDate=new Date(o.project.endDate); } if(o.entries) state.entries=o.entries; if(o.timeWarp) state.timeWarp=o.timeWarp; }catch{} }
+function viewingDay(){ return state.timeWarp ? state.timeWarp : ymdUTC(new Date()); }
+
+/* ====== Elements ====== */
+const $=id=>document.getElementById(id);
+const chart=$("chart"), tooltip=$("tooltip"), toast=$("toast");
+const addWordsEl=$("addWords"), addBtn=$("addBtn"), undoBtn=$("undoBtn");
+const warpToggle=$("warpToggle"), warpDate=$("warpDate"), warpToday=$("warpToday"), warpOnBadge=$("warpOnBadge");
+const totalEl=$("total"), pctEl=$("pct"), barEl=$("bar"), remainingEl=$("remaining");
+const todayWordsEl=$("todayWords"), idealEl=$("ideal"), neededEl=$("needed");
+const projectTitle=$("projectTitle"), datesBadge=$("datesBadge"), goalBadge=$("goalBadge"), pctBadge=$("pctBadge"), viewBadge=$("viewBadge");
+const exportBtn=$("exportBtn"), importBtn=$("importBtn"), importInput=$("importInput");
+const openSettings=$("openSettings"), saveSettings=$("saveSettings"), closeSettings=$("closeSettings"), closeSettings2=$("closeSettings2"), settings=$("settings");
+const nameEl=$("name"), goalEl=$("goal"), startEl=$("start"), endEl=$("end");
+const drawer=$("drawer"), entriesEl=$("entries"), editEntriesBtn=$("editEntriesBtn"), closeEntries=$("closeEntries"), closeEntries2=$("closeEntries2"), jumpDate=$("jumpDate");
+const authBtn=$("authBtn"), authbar=$("authbar"), authBarBtn=$("authBarBtn"), dismissAuthBar=$("dismissAuthBar");
+const login=$("login"), closeLogin=$("closeLogin"), emailEl=$("email"), sendLink=$("sendLink"), signOutBtn=$("signOut");
+const accountChip = $("accountChip"), accountEmail = $("accountEmail");
+const acctInfo = $("acctInfo"), acctEmail2 = $("acctEmail");
+
+/* ====== Undo ====== */
+const History=(()=>{ let last=null; return { push(date,delta){ last={date,delta}; }, pop(){ const x=last; last=null; return x; } };})();
+
+/* Cache chart bounding box for pointer math */
+let _chartRect = null; function refreshChartRect(){ _chartRect = chart.getBoundingClientRect(); } window.addEventListener('resize', refreshChartRect);
+
+/* In-range helper + control enabler */
+function inRange(ymd){ const d = parseYMD(ymd); return d >= state.project.startDate && d <= state.project.endDate; }
+function setAddEnabled(){ const ok = inRange(viewingDay()); addBtn.disabled = !ok; addBtn.title = ok ? "Add words to this date" : "Date is outside project window"; }
+
+/* ====== Series & stats ====== */
+function computeSeries(){
+  const start=ymdUTC(state.project.startDate), end=ymdUTC(state.project.endDate);
+  const days = datesInRangeUTC(start,end);
+  const daysForChart = ["0", ...days];
+  const daily = days.map(d=>Number(state.entries[d]||0));
+  let sum=0; const cumulative=[0, ...daily.map(w=>sum+=w)];
+  const idealPerDay = Math.ceil(state.project.goalWords/Math.max(1,days.length));
+  const pace=[0, ...days.map((_,i)=>Math.min(state.project.goalWords, idealPerDay*(i+1)))];
+  return {days, daysForChart, daily, cumulative, pace, idealPerDay};
+}
+function cutoffIndexForViewing(days){ if(!days || days.length===0) return 0; const vDay=viewingDay(); if(vDay < days[0]) return 0; if(vDay > days[days.length-1]) return days.length; return Math.max(0, days.indexOf(vDay))+1; }
+function wordsOn(ymd, series){ const idx=series.days.indexOf(ymd); return idx>=0 ? series.daily[idx] : 0; }
+
+/* ====== Entries overlay ====== */
+function renderEntries(){
+  const days=datesInRangeUTC(ymdUTC(state.project.startDate), ymdUTC(state.project.endDate));
+  jumpDate.innerHTML = days.map(d=>`<option value="${d}">${fmtMD(d)}</option>`).join("");
+  entriesEl.innerHTML="";
+  for(const d of days){
+    const lab=document.createElement("div"); lab.className="rowlabel"; lab.textContent=fmtMD(d);
+    const input=document.createElement("input"); input.type="number"; input.min="0"; input.value=Number(state.entries[d]??0);
+    input.addEventListener("input",()=>{ state.entries[d]=Number(input.value||0); update(); if (isRemote()){ queueSyncDay(d); } });
+    const rowL=document.createElement("div"); rowL.appendChild(lab);
+    const rowR=document.createElement("div"); rowR.appendChild(input);
+    entriesEl.appendChild(rowL); entriesEl.appendChild(rowR);
+  }
+  jumpDate.onchange = ()=>{ const target = Array.from(entriesEl.querySelectorAll(".rowlabel")).find(el=>el.textContent===fmtMD(jumpDate.value)); if(target){ target.scrollIntoView({behavior:"smooth",block:"center"}); } };
+}
+
+/* ====== Chart with axes & stacked tooltip ====== */
+function renderChart(series){
+  const {days, daysForChart, daily, cumulative, pace} = series;
+  const W=820,H=240,X0=90,Y0=320, RP=36; const W2 = W - RP;
+  const maxY=Math.max(state.project.goalWords, ...cumulative, 1);
+  const xCount=daysForChart.length;
+  const toPts=(arr)=>arr.map((v,i)=>{ const x=X0 + (i/Math.max(1,xCount-1))*W2; const y=Y0 - (v/maxY)*H; return `${x},${y}`; }).join(" ");
+  const vDay = viewingDay(); const lastDay = days[days.length-1]; const firstDay = days[0];
+  let cutoffIndex; if (!vDay) cutoffIndex = 0; else if (vDay < firstDay) cutoffIndex = 0; else if (vDay > lastDay) cutoffIndex = xCount-1; else cutoffIndex = days.indexOf(vDay) + 1;
+  const xFor = (i)=> X0 + (i/Math.max(1,xCount-1))*W2; const yFor = (v)=> Y0 - (v/maxY)*H;
+  const cumPts = Array.from({length: cutoffIndex+1}, (_,i)=> `${xFor(i)},${yFor(cumulative[i])}`).join(" ");
+  const yTicks=5; let yLines="", yTickLabels=""; for(let i=0;i<=yTicks;i++){ const val=Math.round((maxY/yTicks)*i); const y=Y0 - (val/maxY)*H; yLines += `<line x1="${X0}" y1="${y}" x2="${X0+W2}" y2="${y}" stroke="#e2e8f0"/>`; yTickLabels += `<text x="${X0-10}" y="${y+4}" text-anchor="end" class="axis-tick">${val.toLocaleString()}</text>`; }
+  let xTicks="", xTickLabels=""; const tickEvery=Math.max(1, Math.floor((xCount-1)/6)); for(let i=0;i<xCount;i++){ if(i===0 || i===xCount-1 || i%tickEvery===0){ const x=X0 + (i/Math.max(1,xCount-1))*W2; xTicks += `<line x1="${x}" y1="${Y0}" x2="${x}" y2="${Y0+6}" stroke="#94a3b8"/>`; const label = i===0 ? "0" : fmtMD(days[i-1]); xTickLabels += `<text x="${x}" y="${Y0+22}" text-anchor="middle" class="axis-tick">${label}</text>`; } }
+  const chartTitle = `${state.project.name || 'Project'} — Progress`;
+  chart.innerHTML=`
+    <rect x="0" y="0" width="900" height="400" fill="#fff" rx="14"/>
+    <text x="${X0 + W2/2}" y="${Y0-H-30}" text-anchor="middle" class="chart-title">${chartTitle}</text>
+    <g>
+      ${yLines}
+      <line x1="${X0}" y1="${Y0-H}" x2="${X0}" y2="${Y0}" stroke="#334155" stroke-width="1.25"/>
+      <line x1="${X0}" y1="${Y0}" x2="${X0+W2}" y2="${Y0}" stroke="#334155" stroke-width="1.25"/>
+      ${yTickLabels}
+      ${xTicks}
+      ${xTickLabels}
+      <text x="${X0 + W2/2}" y="${Y0+40}" text-anchor="middle" class="axis-title">Days</text>
+      <text x="${X0-56}" y="${Y0 - H/2}" text-anchor="middle" class="axis-title" transform="rotate(-90 ${X0-56},${Y0 - H/2})">Words</text>
+    </g>
+    <polyline points="${toPts(pace)}" fill="none" stroke="var(--pace)" stroke-width="2" stroke-dasharray="4 4"/>
+    <polyline id="cumLine" points="${cumPts}" fill="none" stroke="var(--leaf)" stroke-width="3"/>
+    <g id="hover">
+      <line id="vline" x1="0" y1="${Y0-H}" x2="0" y2="${Y0}" stroke="#64748b" stroke-dasharray="3 3" opacity="0"/>
+      <circle id="dot" cx="0" cy="0" r="5" fill="var(--leaf)" stroke="#fff" stroke-width="2" opacity="0"/>
+    </g>`;
+
+  const vline=document.getElementById("vline"); const dot=document.getElementById("dot"); refreshChartRect(); const bbox = () => _chartRect;
+  function stackedTooltipHTML(label, added, total, paceV){ return `<div class="tt-title">${label}</div><div class="tt-row"><span>Added</span><strong>${(added||0).toLocaleString()}</strong></div><div class="tt-row"><span>Total</span><strong>${(total||0).toLocaleString()}</strong></div><div class="tt-row"><span>Pace</span><strong>${(paceV||0).toLocaleString()}</strong></div>`; }
+  function atX(clientX){ const {left}=bbox(); const x=clientX-left; const t=Math.max(0, Math.min(1,(x-X0)/W2)); const i=Math.round(t*(xCount-1)); if (i>cutoffIndex){ hide(); return; } const xi=X0 + (i/Math.max(1,xCount-1))*W2; const yi=Y0 - ((i>=0? cumulative[i]:0)/maxY)*H; vline.setAttribute("x1",xi); vline.setAttribute("x2",xi); vline.setAttribute("opacity","1"); dot.setAttribute("cx",xi); dot.setAttribute("cy",yi); dot.setAttribute("opacity","1"); tooltip.style.left=xi+"px"; tooltip.style.top=yi+"px"; tooltip.style.opacity="1"; tooltip.setAttribute("aria-hidden","false"); const label = i===0 ? "Start" : fmtMD(days[i-1]); const added = i===0 ? 0 : (daily[i-1]||0); tooltip.innerHTML = stackedTooltipHTML(label, added, cumulative[i], pace[i]); }
+  function hide(){ vline.setAttribute("opacity","0"); dot.setAttribute("opacity","0"); tooltip.style.opacity="0"; tooltip.setAttribute("aria-hidden","true"); }
+  chart.onmousemove=e=>atX(e.clientX); chart.onmouseleave=hide; chart.ontouchstart=e=>{ if(e.touches[0]) atX(e.touches[0].clientX); }; chart.ontouchmove=e=>{ if(e.touches[0]) atX(e.touches[0].clientX); }; chart.ontouchend=hide;
+}
+
+/* ====== Header & Stats ====== */
+function renderHeader(series){ const a=ymdUTC(state.project.startDate), b=ymdUTC(state.project.endDate); const cut = cutoffIndexForViewing(series.days); const total=series.cumulative[cut] ?? 0; const pct=Math.min(100, Math.round((total/Math.max(1,state.project.goalWords))*100)); const v=viewingDay(); projectTitle.textContent=state.project.name || "NaNo Project"; document.title = `${projectTitle.textContent} — NaNo Word Tracker`; datesBadge.textContent="📅 "+fmtRange(a,b); goalBadge.textContent="🎯 "+state.project.goalWords.toLocaleString()+" words"; pctBadge.textContent="📈 "+pct+"% complete"; viewBadge.textContent = "Date: " + (state.timeWarp ? "⏳ " : "") + fmtMD(v); }
+function renderStats(series){ const {days,cumulative,idealPerDay}=series; const cut = cutoffIndexForViewing(days); const total=cumulative[cut] ?? 0; const pct=Math.min(100, Math.round((total/Math.max(1,state.project.goalWords))*100)); const remaining=Math.max(0, state.project.goalWords-total); const todayW=wordsOn(viewingDay(), series); const today=parseYMD(viewingDay()); const elapsed=Math.min(days.length, Math.max(0, Math.floor((today-parseYMD(days[0]))/86400000)+1)); const daysLeft=Math.max(0, days.length - elapsed); const needed=Math.max(0, Math.ceil((state.project.goalWords-total)/Math.max(1,daysLeft))); totalEl.textContent=total.toLocaleString(); pctEl.textContent=pct+"%"; barEl.style.width=pct+"%"; remainingEl.textContent=remaining.toLocaleString(); todayWordsEl.textContent=todayW.toLocaleString(); idealEl.textContent=idealPerDay.toLocaleString(); neededEl.textContent=needed.toLocaleString(); neededEl.style.color = needed>idealPerDay ? "var(--warn-ink)" : "var(--ok-ink)"; }
+
+/* ====== Render & Update ====== */
+function update(){ const series=computeSeries(); renderHeader(series); renderStats(series); renderChart(series); setAddEnabled(); save(); }
+
+/* ====== Local add/undo ====== */
+function addLocal(ymd, delta){ state.entries[ymd]=Number(state.entries[ymd]||0)+delta; History.push(ymd, delta); update(); }
+
+/* ====== Supabase glue (optional) ====== */
+let projectId=null, realtimeSub=null;
+function isRemote(){ return !!(sb && user); }
+async function signIn(email){ if(!sb) return flashToast("Cloud sync not configured"); await sb.auth.signInWithOtp({ email }); flashToast("Check your email for the magic link"); }
+async function signOut(){ if(!sb) return; await sb.auth.signOut(); }
+function onAuth(){ if(!sb) return; sb.auth.onAuthStateChange((_e, session)=>{ user = session?.user || null; updateAuthUI(); if(user){ bootAfterAuth().catch(err=>console.error(err)); } }); }
+function updateAuthUI(){
+  if (user) {
+    authBtn.textContent = "Account";
+    signOutBtn.style.display = "inline-block";
+    authbar.style.display = "none";
+    if (accountChip) { accountChip.style.display = "inline-flex"; accountEmail.textContent = user.email || "signed-in"; }
+    if (acctInfo)    { acctInfo.style.display = "block";         acctEmail2.textContent   = user.email || ""; }
+  } else {
+    authBtn.textContent = "Sign in";
+    signOutBtn.style.display = "none";
+    if (!localStorage.getItem("authbar_dismissed")) authbar.style.display = "flex";
+    if (accountChip) { accountChip.style.display = "none"; accountEmail.textContent = ""; }
+    if (acctInfo)    { acctInfo.style.display = "none";  acctEmail2.textContent   = ""; }
+  }
+}
+
+async function getOrCreateProject(){ const { data, error } = await sb.from('projects').select('*').eq('owner', user.id).order('created_at', {ascending:true}).limit(1); if(error) throw error; if(data?.[0]) return data[0]; const payload={ owner:user.id, name:state.project.name, goal_words:state.project.goalWords, start_date:ymdUTC(state.project.startDate), end_date:ymdUTC(state.project.endDate) }; const { data:created, error:e2 } = await sb.from('projects').insert(payload).select().single(); if(e2) throw e2; return created; }
+function foldEvents(rows){ const acc={}; for(const r of rows){ const k=(typeof r.ymd==='string')?r.ymd:ymdUTC(new Date(r.ymd)); acc[k]=(acc[k]||0)+Number(r.delta||0); } return acc; }
+async function loadEvents(){ const { data, error } = await sb.from('word_events').select('ymd, delta').eq('project_id', projectId).order('ymd, created_at', {ascending:true}); if(error) throw error; state.entries = foldEvents(data||[]); }
+async function addEvent(ymd, delta){ // optimistic UI
+  addLocal(ymd, delta);
+  const { error } = await sb.from('word_events').insert({ project_id:projectId, user_id:user.id, ymd, delta });
+  if(error){ flashToast("Save failed; reloading…"); await loadEvents(); update(); }
+}
+function subscribeRealtime(){ if(realtimeSub){ sb.removeChannel(realtimeSub); realtimeSub=null; } realtimeSub = sb.channel('realtime:word_events').on('postgres_changes', { event:'*', schema:'public', table:'word_events', filter:`project_id=eq.${projectId}` }, async ()=>{ await loadEvents(); update(); }).subscribe(); }
+async function bootAfterAuth(){ const proj=await getOrCreateProject(); projectId=proj.id; state.project.name=proj.name; state.project.goalWords=proj.goal_words; state.project.startDate=new Date(proj.start_date); state.project.endDate=new Date(proj.end_date); await loadEvents(); subscribeRealtime(); update(); }
+
+/* Sync helper for manual edits in Entries */
+let _syncTimer=null; function queueSyncDay(ymd){ if(!isRemote()) return; clearTimeout(_syncTimer); _syncTimer=setTimeout(async()=>{ const total=Number(state.entries[ymd]||0); // write idempotently by storing a replace event: delta = total - serverTotal
+  const { data } = await sb.from('word_events').select('ymd, delta').eq('project_id', projectId).eq('ymd', ymd); const serverTotal = foldEvents(data||[])[ymd]||0; const delta = Math.max(0, total - serverTotal); if(delta>0) await addEvent(ymd, delta); }, 300); }
+
+/* ====== Actions ====== */
+$("addBtn").addEventListener("click",()=>{ if(addBtn.disabled){ flashToast("Date is outside project window"); return; } const n=Number(addWordsEl.value||0); if(!isNaN(n)&&n>0){ const ymd=viewingDay(); if(isRemote()) addEvent(ymd, n); else addLocal(ymd, n); addWordsEl.value=""; addWordsEl.focus(); } else addWordsEl.focus(); });
+addWordsEl.addEventListener("keydown",e=>{ if(e.key==="Enter") $("addBtn").click(); });
+undoBtn.addEventListener("click",()=>{ const x=History.pop(); if(!x) return; state.entries[x.date]=Math.max(0, Number(state.entries[x.date]||0) - x.delta); update(); if(isRemote()) queueSyncDay(x.date); });
+
+document.addEventListener("keydown",(e)=>{ const mod = e.metaKey || e.ctrlKey; if(mod && e.key.toLowerCase()==="z"){ e.preventDefault(); const x=History.pop(); if(!x) return; state.entries[x.date]=Math.max(0, Number(state.entries[x.date]||0) - x.delta); update(); if(isRemote()) queueSyncDay(x.date); } });
+
+/* Time Warp */
+warpToggle.addEventListener("change", ()=>{ state.timeWarp = warpToggle.checked ? (warpDate.value || viewingDay()) : null; update(); });
+warpDate.addEventListener("change", ()=>{ if (warpToggle.checked){ state.timeWarp = warpDate.value || null; update(); } });
+warpToday.addEventListener("click", ()=>{ warpDate.value = ymdUTC(new Date()); if (warpToggle.checked) state.timeWarp = warpDate.value; update(); });
+
+/* Entries overlay */
+editEntriesBtn.addEventListener("click", ()=>{ renderEntries(); openOverlay(drawer); });
+closeEntries.addEventListener("click", ()=> closeOverlay(drawer));
+closeEntries2.addEventListener("click", ()=> closeOverlay(drawer));
+
+/* Settings overlay */
+openSettings.addEventListener("click", ()=>{ nameEl.value=state.project.name; goalEl.value=state.project.goalWords; startEl.value=ymdUTC(state.project.startDate); endEl.value=ymdUTC(state.project.endDate); openOverlay(settings); });
+saveSettings.addEventListener("click", ()=>{ state.project.name = nameEl.value || state.project.name; state.project.goalWords = Number(goalEl.value||state.project.goalWords); if(startEl.value) state.project.startDate = parseYMD(startEl.value); if(endEl.value)   state.project.endDate   = parseYMD(endEl.value); closeOverlay(settings); update(); if(isRemote()) flashToast("Tip: project settings don’t sync yet in server — coming next"); });
+closeSettings.addEventListener("click", ()=> closeOverlay(settings));
+closeSettings2.addEventListener("click", ()=> closeOverlay(settings));
+
+/* Export/Import/Reset */
+$("resetAllBtn").addEventListener("click",()=>{ if(!confirm("Reset all entries? Project settings will be kept.")) return; state.entries={}; update(); if(isRemote()) flashToast("Cleared local view. Server data remains until you edit."); });
+exportBtn.addEventListener("click",()=>{ const data=new Blob([localStorage.getItem(STORAGE_KEY)||"{}"],{type:"application/json"}); const url=URL.createObjectURL(data); const a=document.createElement("a"); a.href=url; a.download="nanotracker.json"; a.click(); URL.revokeObjectURL(url); });
+importBtn.addEventListener("click",()=>importInput.click());
+importInput.addEventListener("change",(e)=>{ const f=e.target.files?.[0]; if(!f) return; const fr=new FileReader(); fr.onload=()=>{ try{ const o=JSON.parse(String(fr.result||"{}")); localStorage.setItem(STORAGE_KEY,JSON.stringify(o)); load(); update(); if(isRemote()) flashToast("Imported locally; edit a day to sync delta"); } catch{ alert("Invalid JSON."); } }; fr.readAsText(f); e.target.value=""; });
+
+/* Auth UI */
+authBtn.addEventListener("click", ()=> openOverlay(login));
+if (accountChip) accountChip.addEventListener("click", ()=> openOverlay(login));
+authBarBtn.addEventListener("click", ()=> openOverlay(login));
+dismissAuthBar.addEventListener("click", ()=>{ authbar.style.display="none"; localStorage.setItem("authbar_dismissed","1"); });
+closeLogin.addEventListener("click", ()=> closeOverlay(login));
+sendLink.addEventListener("click", async ()=>{ const email=(emailEl.value||"").trim(); if(!email) return emailEl.focus(); await signIn(email); });
+signOutBtn.addEventListener("click", async ()=>{ await signOut(); closeOverlay(login); flashToast("Signed out"); });
+
+/* Overlay helpers */
+function focusables(root){ return Array.from(root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter(el=>!el.hasAttribute('disabled') && !el.getAttribute('aria-hidden')); }
+function openOverlay(overlay){ overlay.classList.add("show"); overlay.addEventListener("click", onBackdrop); overlay.addEventListener("keydown", onOverlayKey); const panel = overlay.querySelector('[data-panel]'); const items = focusables(panel); if(items[0]) items[0].focus(); overlay._trap = (e)=>{ if(e.key!=="Tab") return; const fs = focusables(panel); if(fs.length===0) return; const first=fs[0], last=fs[fs.length-1]; if(e.shiftKey && document.activeElement===first){ last.focus(); e.preventDefault(); } else if(!e.shiftKey && document.activeElement===last){ first.focus(); e.preventDefault(); } }; panel.addEventListener("keydown", overlay._trap); }
+function closeOverlay(overlay){ overlay.classList.remove("show"); overlay.removeEventListener("click", onBackdrop); overlay.removeEventListener("keydown", onOverlayKey); const panel = overlay.querySelector('[data-panel]'); panel.removeEventListener("keydown", overlay._trap || (()=>{})); }
+function onBackdrop(e){ if(e.currentTarget===e.target) closeOverlay(e.currentTarget); }
+function onOverlayKey(e){ if(e.key==="Escape") closeOverlay(e.currentTarget); }
+
+/* Toast */
+let toastTimer=null; function flashToast(msg){ toast.textContent=msg; clearTimeout(toastTimer); toast.classList.add("show"); toastTimer=setTimeout(()=>toast.classList.remove("show"),1600); }
+
+/* ====== Self-tests ====== */
+function runSelfTests(){
+  const results=[]; const log=(name,ok)=>{ results.push({name,ok}); if(!ok) console.error("FAIL:",name); };
+  const d=parseYMD("2025-11-02"); log("ymdUTC roundtrip", ymdUTC(d)==="2025-11-02");
+  const r=datesInRangeUTC("2025-11-01","2025-11-03"); log("datesInRange length", r.length===3 && r[0]==="2025-11-01" && r[2]==="2025-11-03");
+  // computeSeries tiny scenario
+  const backup = { project: { ...state.project }, entries: { ...state.entries }, timeWarp: state.timeWarp };
+  state.project = {name:"T", goalWords:300, startDate:parseYMD("2025-11-01"), endDate:parseYMD("2025-11-03")};
+  state.entries = {"2025-11-01":100, "2025-11-02":50};
+  const s = computeSeries();
+  log("daily", s.daily.join(",")==="100,50,0");
+  log("cumulative", s.cumulative.join(",")==="0,100,150,150");
+  log("idealPerDay=100", s.idealPerDay===100);
+  log("pace length", s.pace.length===s.daysForChart.length);
+  log("wordsOn 11/02", wordsOn("2025-11-02", s)===50);
+  log("fmtMD Nov 9", fmtMD("2025-11-09")==="Nov 9");
+  // cutoff test
+  const prevWarp=state.timeWarp; state.timeWarp="2025-11-02"; const s2=computeSeries(); const cut2=cutoffIndexForViewing(s2.days); log("total uses cutoff", s2.cumulative[cut2]===150); state.timeWarp=prevWarp;
+  // foldEvents
+  const folded = foldEvents([{ymd:"2025-11-01",delta:10},{ymd:"2025-11-01",delta:5},{ymd:"2025-11-02",delta:3}]); log("foldEvents sums", folded["2025-11-01"]===15 && folded["2025-11-02"]===3);
+  // restore
+  state.project = { ...backup.project }; state.entries = { ...backup.entries }; state.timeWarp = backup.timeWarp;
+  console.log(`Self-tests: ${results.filter(x=>x.ok).length}/${results.length} passed`, results);
+}
+
+/* ====== Boot ====== */
+load(); warpDate.value = ymdUTC(new Date()); update();
+if (sb){
+  onAuth();
+  sb.auth.getSession().then(({data})=>{
+    user = data?.session?.user || null;
+    updateAuthUI();
+    if (user) bootAfterAuth();
+  });
+} else {
+  updateAuthUI();
+}
+runSelfTests();
+</script>
+</body>
+</html>

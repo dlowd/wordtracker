@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NaNo Word Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:wght@700;800&display=swap" rel="stylesheet">
+
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <div class="headerbar">
+    <div style="flex:1 1 auto;min-width:300px">
+      <h1 class="h1" id="projectTitle">NaNo 2025</h1>
+      <div class="badges">
+        <span class="badge" id="datesBadge">📅 Nov 1 – Nov 30</span>
+        <span class="badge" id="goalBadge">🎯 50,000 words</span>
+        <span class="badge" id="pctBadge">📈 0% complete</span>
+        <span class="badge" id="viewBadge" style="cursor:pointer" title="Click to preview another day">Date: —</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="authBtn" class="btn btn-primary">Sign in</button>
+      <span id="accountChip" class="badge" style="display:none;cursor:pointer" title="View account">
+  🔐 <span id="accountEmail"></span>
+</span>
+      <button id="refreshBtn" class="btn btn-quiet" title="Pull latest data from the cloud" style="display:none">↻ Sync</button>
+      <span id="syncStatus" class="sync-status" aria-live="polite"></span>
+      <button id="exportBtn" class="btn">Export</button>
+      <button id="importBtn" class="btn">Import</button><input id="importInput" type="file" accept="application/json" style="display:none">
+      <button id="editEntriesBtn" class="btn">Edit entries…</button>
+      <button id="openSettings" class="btn" title="Project Settings">⚙️ Settings</button>
+    </div>
+  </div>
+
+  <!-- Optional auth prompt -->
+  <div id="authbar" class="authbar" style="display:none">
+    <span>🔒 <strong>Optional sign‑in:</strong> Sync across devices and back up your data.</span>
+    <button id="authBarBtn" class="btn btn-primary">Sign in</button>
+    <button id="dismissAuthBar" class="btn btn-quiet">Not now</button>
+  </div>
+
+  <!-- Quick add -->
+  <div class="card" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+    <div style="min-width:220px;max-width:320px">
+      <label>Words just written</label>
+      <input id="addWords" type="number" inputmode="numeric" placeholder="e.g., 347" min="0">
+    </div>
+    <button id="addBtn" class="btn btn-primary">Add to Today</button>
+    <button id="undoBtn" class="btn">Undo</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="card" style="margin-top:14px">
+    <div class="stats" aria-live="polite">
+      <div class="stat"><div class="k">Total</div><div id="total" class="v">0</div></div>
+      <div class="stat">
+        <div class="k">% complete</div>
+        <div class="v" id="pct">0%</div>
+        <div class="progress"><div id="bar" class="bar"></div></div>
+      </div>
+      <div class="stat"><div class="k">Remaining</div><div id="remaining" class="v">0</div></div>
+    </div>
+    <div class="stats-secondary">
+      <div class="stat"><div class="k">Words today</div><div id="todayWords" class="v">0</div></div>
+      <div class="stat"><div class="k">Ideal / day</div><div id="ideal" class="v">0</div></div>
+      <div class="stat"><div class="k">Needed / day (to finish)</div><div id="needed" class="v">0</div></div>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div class="chartwrap" style="margin-top:14px">
+    <svg id="chart" class="chart" viewBox="0 0 900 400" preserveAspectRatio="none" aria-label="Progress chart"></svg>
+    <div id="tooltip" class="tooltip" role="tooltip" aria-hidden="true"></div>
+    <div class="legend"><span class="kdot" style="background:var(--leaf)"></span> Cumulative <span class="kline"></span> Pace</div>
+  </div>
+
+  <!-- Settings overlay -->
+  <div id="settings" class="overlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="panel" data-panel tabindex="-1">
+      <div class="sticky row" style="justify-content:space-between">
+        <h3 id="settingsTitle" style="margin:0">Project Settings</h3>
+        <button id="closeSettings" class="btn">Close</button>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="row" style="gap:12px;flex-wrap:wrap">
+          <div style="flex:1 1 260px"><label>Project name</label><input id="name" type="text" value="NaNo 2025"></div>
+          <div style="flex:1 1 160px"><label>Goal words</label><input id="goal" type="number" min="1" value="50000"></div>
+          <div style="flex:1 1 160px"><label>Start date</label><input id="start" type="date"></div>
+          <div style="flex:1 1 160px"><label>End date</label><input id="end" type="date"></div>
+          <div style="flex:1 1 200px"><label>Theme</label><select id="themeSelect" class="select-input">
+            <option value="spruce">Spruce (default)</option>
+            <option value="midnight">Midnight</option>
+            <option value="sunset">Sunset</option>
+          </select></div>
+        </div>
+      </div>
+      <div class="footer-sticky row" style="justify-content:space-between;gap:8px;margin-top:12px">
+        <button id="resetAllBtn" class="btn btn-danger">Reset all data</button>
+        <div class="actions">
+          <button id="saveSettings" class="btn btn-primary">Save</button>
+          <button id="closeSettings2" class="btn btn-quiet">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Time Warp overlay -->
+  <div id="warpOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="warpTitle">
+    <div class="panel" data-panel tabindex="-1">
+      <div class="sticky row" style="justify-content:space-between;align-items:center">
+        <h3 id="warpTitle" style="margin:0">Preview another day</h3>
+        <button id="closeWarp" class="btn">Close</button>
+      </div>
+      <div class="card" style="margin-top:12px;display:flex;flex-direction:column;gap:12px">
+        <div>
+          <div style="font-size:14px;color:var(--muted)">Current date</div>
+          <div id="currentDateInfo" style="font-size:16px;font-weight:600;color:var(--fg)"></div>
+        </div>
+        <div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--fg)">
+            <input id="warpToggle" type="checkbox" aria-label="Enable preview mode">
+            Preview another day
+          </label>
+        </div>
+        <div>
+          <label for="warpDate">Preview date</label>
+          <input id="warpDate" type="date" aria-describedby="warpHelp">
+        </div>
+        <p id="warpHelp" style="font-size:13px;color:var(--muted);margin:0">When preview mode is on, totals and pacing update as if it were that date. Adding words targets the previewed day.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Entries overlay -->
+  <div id="drawer" class="overlay" role="dialog" aria-modal="true" aria-labelledby="entriesTitle">
+    <div class="panel" data-panel tabindex="-1">
+      <div class="sticky row" style="justify-content:space-between;align-items:center">
+        <h3 id="entriesTitle" style="margin:0">Daily entries</h3>
+        <div class="jump">
+          <label for="jumpDate" class="k">Jump to</label>
+          <select id="jumpDate" class="btn-quiet" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border)"></select>
+        </div>
+        <button id="closeEntries" class="btn">Close</button>
+      </div>
+      <div id="entries" class="entries" style="margin-top:10px"></div>
+      <div class="footer-sticky row" style="justify-content:flex-end;gap:8px;margin-top:12px">
+        <button id="closeEntries2" class="btn btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login overlay (magic link) -->
+  <div id="login" class="overlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+    <div class="panel" data-panel tabindex="-1">
+      <div class="sticky row" style="justify-content:space-between">
+        <h3 id="loginTitle" style="margin:0">Sign in to sync (optional)</h3>
+      <button id="closeLogin" class="btn">Close</button>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div id="signInPane">
+          <label for="email">Email for magic link</label>
+          <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+            <button id="sendLink" class="btn btn-primary">Send magic link</button>
+          </div>
+          <p style="font-size:13px;color:var(--muted);margin-top:10px">You can keep using the app without signing in. Sign in only if you want cloud backup and multi‑device sync.</p>
+        </div>
+        <div id="signedInPane" style="display:none">
+          <div id="acctInfo" style="font-size:13px;color:var(--muted);margin-bottom:12px">
+            Signed in as <strong id="acctEmail"></strong>
+          </div>
+          <p style="font-size:13px;color:var(--muted);margin:0 0 12px 0">Cloud sync is active on this device. Sign out if you want to switch accounts or return to offline mode.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="signOut" class="btn btn-quiet">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+</div>
+
+<!-- Supabase client (public) -->
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

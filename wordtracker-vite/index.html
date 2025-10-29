@@ -58,18 +58,31 @@
   <div class="insights">
     <div class="card stats-card" aria-live="polite">
       <div class="stats">
-        <div class="stat"><div class="k">Total words</div><div id="total" class="v">0</div></div>
-        <div class="stat"><div class="k">Remaining</div><div id="remaining" class="v">0</div></div>
-        <div class="stat"><div class="k">Words today</div><div id="todayWords" class="v">0</div></div>
-        <div class="stat"><div class="k">Needed / day</div><div id="needed" class="v">0</div></div>
-      </div>
-      <div class="stats-secondary">
+        <div class="stat" id="todayStat">
+          <div class="k">Words today</div>
+          <div class="v" id="todayWords">0</div>
+          <div class="sub" id="todayGoalHint"></div>
+        </div>
         <div class="stat">
-          <div class="k">% complete</div>
+          <div class="k">Needed / day</div>
+          <div class="v" id="needed">0</div>
+          <div class="sub" id="neededHint"></div>
+        </div>
+        <div class="stat">
+          <div class="k">Remaining</div>
+          <div class="v" id="remaining">0</div>
+          <div class="sub" id="remainingHint"></div>
+        </div>
+        <div class="stat">
+          <div class="k">Total words</div>
+          <div class="v" id="total">0</div>
+          <div class="sub" id="totalHint"></div>
+        </div>
+        <div class="stat stat-progress">
+          <div class="k">Progress</div>
           <div class="v" id="pct">0%</div>
           <div class="progress"><div id="bar" class="bar"></div></div>
         </div>
-        <div class="stat"><div class="k">Ideal / day</div><div id="ideal" class="v">0</div></div>
       </div>
     </div>
 
@@ -158,6 +171,7 @@
             <button id="importBtn" class="btn">Import</button>
             <input id="importInput" type="file" accept="application/json" style="display:none">
           </div>
+          <p class="action-note">Export downloads a JSON backup of your progress. Import restores from a previously exported file.</p>
         </section>
         <section>
           <h4>Customize</h4>

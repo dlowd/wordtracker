@@ -33,6 +33,8 @@ let serverEntriesSnapshot = {};
 const syncTimers = {};
 let lastSyncedAt = null;
 let syncStatusInterval = null;
+let remoteSupportsBaseline = true;
+let baselineWarningShown = false;
 
 let projectId = null;
 let realtimeSub = null;
@@ -52,6 +54,41 @@ export function initApp() {
     updateAuthUI();
   }
   runSelfTests();
+}
+
+function projectFields(includeBaseline = true) {
+  const payload = {
+    name: state.project.name,
+    goal_words: state.project.goalWords,
+    start_date: ymdUTC(state.project.startDate),
+    end_date: ymdUTC(state.project.endDate),
+  };
+  if (includeBaseline && remoteSupportsBaseline) {
+    payload.baseline_words = state.project.baselineWords;
+  }
+  return payload;
+}
+
+function isBaselineColumnError(error) {
+  const haystack = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.hint ?? ''}`.toLowerCase();
+  return haystack.includes('baseline_words');
+}
+
+function warnBaselineColumnMissing() {
+  if (!remoteSupportsBaseline) return;
+  remoteSupportsBaseline = false;
+  console.warn(
+    [
+      'Supabase projects table is missing the baseline_words column required by the latest code.',
+      'Run this SQL in Supabase to add it:',
+      '  alter table public.projects add column baseline_words integer not null default 0;',
+      'Then reload the app after the migration.',
+    ].join('\n')
+  );
+  if (!baselineWarningShown) {
+    flashToast(elements.toast, 'Cloud schema outdated; keeping baseline locally.');
+    baselineWarningShown = true;
+  }
 }
 
 function bindEvents() {
@@ -609,7 +646,13 @@ async function bootAfterAuth() {
   state.project.goalWords = project.goal_words;
   state.project.startDate = new Date(project.start_date);
   state.project.endDate = new Date(project.end_date);
-  state.project.baselineWords = project.baseline_words ?? 0;
+  const hasBaseline = Object.prototype.hasOwnProperty.call(project, 'baseline_words');
+  if (hasBaseline) {
+    remoteSupportsBaseline = true;
+    state.project.baselineWords = project.baseline_words ?? 0;
+  } else {
+    warnBaselineColumnMissing();
+  }
   await loadEvents();
   subscribeRealtime();
   update();
@@ -623,18 +666,30 @@ async function getOrCreateProject() {
     .order('created_at', { ascending: true })
     .limit(1);
   if (error) throw error;
-  if (data?.[0]) return data[0];
-  const payload = {
-    owner: user.id,
-    name: state.project.name,
-    goal_words: state.project.goalWords,
-    start_date: ymdUTC(state.project.startDate),
-    end_date: ymdUTC(state.project.endDate),
-    baseline_words: state.project.baselineWords,
-  };
-  const { data: created, error: insertError } = await supabase.from('projects').insert(payload).select().single();
-  if (insertError) throw insertError;
-  return created;
+  if (data?.[0]) {
+    if (!Object.prototype.hasOwnProperty.call(data[0], 'baseline_words')) {
+      warnBaselineColumnMissing();
+    } else {
+      remoteSupportsBaseline = true;
+    }
+    return data[0];
+  }
+  let includeBaseline = remoteSupportsBaseline;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const payload = {
+      owner: user.id,
+      ...projectFields(includeBaseline),
+    };
+    const { data: created, error: insertError } = await supabase.from('projects').insert(payload).select().single();
+    if (!insertError) return created;
+    if (includeBaseline && isBaselineColumnError(insertError)) {
+      warnBaselineColumnMissing();
+      includeBaseline = false;
+      continue;
+    }
+    throw insertError;
+  }
+  throw new Error('Unable to create project');
 }
 
 function foldEvents(rows) {
@@ -706,15 +761,18 @@ function subscribeRealtime() {
 
 async function syncProjectSettings() {
   if (!isRemote() || !projectId) return;
-  const payload = {
-    name: state.project.name,
-    goal_words: state.project.goalWords,
-    start_date: ymdUTC(state.project.startDate),
-    end_date: ymdUTC(state.project.endDate),
-    baseline_words: state.project.baselineWords,
-  };
-  const { error } = await supabase.from('projects').update(payload).eq('id', projectId);
-  if (error) throw error;
+  let includeBaseline = remoteSupportsBaseline;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const payload = projectFields(includeBaseline);
+    const { error } = await supabase.from('projects').update(payload).eq('id', projectId);
+    if (!error) return;
+    if (includeBaseline && isBaselineColumnError(error)) {
+      warnBaselineColumnMissing();
+      includeBaseline = false;
+      continue;
+    }
+    throw error;
+  }
 }
 
 async function fetchProjectState() {
@@ -725,7 +783,13 @@ async function fetchProjectState() {
   state.project.goalWords = data.goal_words;
   state.project.startDate = new Date(data.start_date);
   state.project.endDate = new Date(data.end_date);
-  state.project.baselineWords = data.baseline_words ?? 0;
+  const hasBaseline = Object.prototype.hasOwnProperty.call(data, 'baseline_words');
+  if (hasBaseline) {
+    remoteSupportsBaseline = true;
+    state.project.baselineWords = data.baseline_words ?? 0;
+  } else {
+    warnBaselineColumnMissing();
+  }
 }
 
 async function refreshFromServer() {

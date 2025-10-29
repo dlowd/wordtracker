@@ -114,7 +114,7 @@ body{
 .title-row{display:flex;align-items:center;gap:8px}
 .header-meta{display:flex;gap:8px;flex-wrap:wrap}
 .header-right{display:flex;align-items:center;gap:10px}
-.icon-btn{border:1px solid var(--btn-border);background:var(--btn-bg);color:var(--btn-fg);padding:6px 10px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;transition:border-color .15s ease, filter .15s ease}
+.icon-btn{border:1px solid var(--btn-border);background:var(--btn-bg);color:var(--btn-fg);padding:4px 8px;border-radius:8px;cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;transition:border-color .15s ease, filter .15s ease}
 .icon-btn:hover{border-color:var(--btn-border-hover)}
 .icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sync-chip{display:inline-flex;align-items:center;padding:6px 12px;border-radius:999px;background:var(--warp-bg);border:1px solid var(--warp-border);color:var(--warp-ink);font-size:12px}
@@ -129,7 +129,7 @@ body{
 .btn-danger:hover{filter:brightness(.98)}
 
 /* Motivation */
-.motivation{margin:8px 0 16px 0;padding:14px 16px;border-radius:12px;background:var(--warp-bg);border:1px solid var(--warp-border);color:var(--warp-ink);font-size:15px;font-weight:600}
+.motivation{margin:12px 0 18px 0;padding:14px 16px;border-radius:12px;background:var(--warp-bg);border:1px solid var(--warp-border);color:var(--warp-ink);font-size:15px;font-weight:600;display:inline-flex;align-items:center}
 
 /* Add words */
 .add-card{margin-top:14px;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;padding:18px}
@@ -142,10 +142,14 @@ body{
 .insights{display:flex;flex-direction:column;gap:16px;margin-top:18px}
 .stats-card,.chart-card{padding:18px}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
-.stats-secondary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:14px}
 .stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px}
 .k{font-size:13px;color:var(--muted);font-weight:600}
 .v{font-size:24px;font-weight:800}
+.stat .sub{font-size:12px;color:var(--muted)}
+.stat-progress .v{font-size:22px}
+.stat-progress .progress{margin-top:10px}
+.stat-ontrack .v{color:var(--ok-ink)}
+.stat-ontrack .sub{color:var(--ok-ink)}
 .progress{height:10px;background:#eef2f7;border:1px solid var(--border);border-radius:999px;overflow:hidden;margin-top:8px}
 .bar{height:100%;background:linear-gradient(90deg,#86efac,#16a34a);width:0%}
 .chart-card .chartwrap{position:relative}
@@ -179,6 +183,7 @@ input[type="text"],input[type="number"],input[type="date"],input[type="email"],.
 .actions-groups{display:flex;flex-direction:column;gap:18px;padding:8px 0}
 .actions-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
 .actions-row .sync-chip{margin-left:4px}
+.action-note{margin:6px 0 0 0;font-size:12px;color:var(--muted)}
 
 /* Overlays (Settings, Entries, Login) */
 .overlay{position:fixed; inset:0; display:none; align-items:center; justify-content:flex-end; background:rgba(2,6,23,.35); z-index:1000}

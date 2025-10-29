@@ -1,14 +1,17 @@
 import {
   state,
-  loadState,
-  saveState,
+  loadLocalState,
+  saveLocalState,
+  loadPreferences,
+  savePreferences,
+  resetProjectData,
+  STORAGE_KEY,
   viewingDay,
   normalizeTheme,
-  STORAGE_KEY,
   inRange,
   THEMES,
 } from '../state/state.js';
-import { elements, requireElement } from '../ui/dom.js';
+import { elements } from '../ui/dom.js';
 import { flashToast } from '../ui/toast.js';
 import { createHistory } from '../state/history.js';
 import { openOverlay, closeOverlay } from '../ui/overlay.js';
@@ -18,7 +21,9 @@ import {
   syncTimeWarpControls,
   updateCurrentDateDisplay,
   setupTimeWarp,
+  closeTimeWarpPopover,
 } from '../features/timeWarp.js';
+import { MODES, getStoredMode, setStoredMode } from '../data/mode.js';
 import {
   ymdUTC,
   parseYMD,
@@ -35,24 +40,169 @@ let lastSyncedAt = null;
 let syncStatusInterval = null;
 let remoteSupportsBaseline = true;
 let baselineWarningShown = false;
+let activeMode = null;
+let actionsMenuVisible = false;
+let actionsMenuCleanup = null;
+let loginPending = false;
+let pendingEmail = '';
 
 let projectId = null;
 let realtimeSub = null;
+let projectRealtimeSub = null;
 
 const chartRenderer = createChartRenderer(elements.chart, elements.tooltip);
 
+const isLocalMode = () => activeMode === MODES.LOCAL;
+const isCloudMode = () => activeMode === MODES.CLOUD;
+
+function setAppInteractivity(enabled) {
+  const disabled = !enabled;
+  const toggle = (el) => {
+    if (!el) return;
+    if ('disabled' in el) {
+      el.disabled = disabled;
+    } else if (disabled) {
+      el.setAttribute('aria-disabled', 'true');
+    } else {
+      el.removeAttribute('aria-disabled');
+    }
+  };
+  toggle(elements.addButton);
+  toggle(elements.undoButton);
+  toggle(elements.moreBtn);
+  toggle(elements.openSettings);
+  toggle(elements.editEntriesBtn);
+  toggle(elements.editProjectBtn);
+  toggle(elements.refreshBtn);
+  if (elements.addWordsInput) {
+    elements.addWordsInput.readOnly = disabled;
+    elements.addWordsInput.classList.toggle('is-disabled', disabled);
+  }
+  if (elements.viewBadge) {
+    elements.viewBadge.tabIndex = disabled ? -1 : 0;
+    if (disabled) {
+      elements.viewBadge.setAttribute('aria-disabled', 'true');
+    } else {
+      elements.viewBadge.removeAttribute('aria-disabled');
+    }
+  }
+  if (disabled) {
+    closeActionsMenu();
+    closeTimeWarpPopover();
+  }
+  document.body.classList.toggle('app-locked', disabled);
+}
+
+function updateLoginPendingUI() {
+  const messageTarget = elements.loginStatus;
+  const emailInput = elements.emailInput;
+  const sendBtn = elements.sendLinkBtn;
+  const resendBtn = elements.resendLinkBtn;
+  if (sendBtn) sendBtn.disabled = loginPending;
+  if (emailInput) emailInput.readOnly = loginPending;
+  if (loginPending && messageTarget) {
+    const targetEmail = pendingEmail || emailInput?.value || 'your email';
+    messageTarget.textContent = `Magic link sent to ${targetEmail}. Follow the link to finish signing in.`;
+  } else if (messageTarget) {
+    messageTarget.textContent = '';
+  }
+  if (resendBtn) {
+    resendBtn.style.display = loginPending ? 'inline-flex' : 'none';
+    resendBtn.disabled = !loginPending;
+  }
+}
+
+function updateActionsMenuPosition() {
+  const menu = elements.actionsMenu;
+  const trigger = elements.moreBtn;
+  if (!menu || !trigger) return;
+  const rect = trigger.getBoundingClientRect();
+  const previousDisplay = menu.style.display;
+  const previousVisibility = menu.style.visibility;
+  if (!menu.classList.contains('show')) {
+    menu.style.visibility = 'hidden';
+    menu.style.display = 'block';
+  }
+  const menuWidth = menu.offsetWidth || 280;
+  const top = rect.bottom + window.scrollY + 8;
+  let left = rect.right + window.scrollX - menuWidth;
+  left = Math.max(16, left);
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+  if (!menu.classList.contains('show')) {
+    menu.style.display = previousDisplay;
+    menu.style.visibility = previousVisibility;
+  }
+}
+
+function setActionsMenuVisibility(visible) {
+  const menu = elements.actionsMenu;
+  const trigger = elements.moreBtn;
+  if (!menu || !trigger) return;
+  if (actionsMenuVisible === visible) return;
+  actionsMenuVisible = visible;
+  trigger.setAttribute('aria-expanded', visible ? 'true' : 'false');
+  if (visible) {
+    updateActionsMenuPosition();
+    menu.classList.add('show');
+    menu.setAttribute('aria-hidden', 'false');
+    const onPointerDown = (event) => {
+      if (
+        !menu.contains(event.target) &&
+        event.target !== trigger &&
+        !trigger.contains(event.target)
+      ) {
+        closeActionsMenu();
+      }
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeActionsMenu();
+        trigger.focus();
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('resize', updateActionsMenuPosition);
+    window.addEventListener('scroll', updateActionsMenuPosition, true);
+    document.addEventListener('keydown', onKeyDown);
+    actionsMenuCleanup = () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('resize', updateActionsMenuPosition);
+      window.removeEventListener('scroll', updateActionsMenuPosition, true);
+      document.removeEventListener('keydown', onKeyDown);
+      actionsMenuCleanup = null;
+    };
+  } else {
+    menu.classList.remove('show');
+    menu.setAttribute('aria-hidden', 'true');
+    if (actionsMenuCleanup) actionsMenuCleanup();
+  }
+}
+
+function closeActionsMenu() {
+  setActionsMenuVisibility(false);
+}
+
+function toggleActionsMenu() {
+  setActionsMenuVisibility(!actionsMenuVisible);
+}
+
 export function initApp() {
-  loadState();
+  loadPreferences();
   initTimeWarpState();
   populateThemeSelect();
   applyTheme();
   bindEvents();
-  update();
+  const storedMode = getStoredMode();
+  const preferredMode = storedMode || (supabase ? MODES.CLOUD : MODES.LOCAL);
+  activateMode(preferredMode, { initial: true });
   if (supabase) {
     initializeSupabase();
   } else {
     updateAuthUI();
   }
+  updateLoginPendingUI();
   runSelfTests();
 }
 
@@ -102,20 +252,20 @@ function bindEvents() {
     openSettings,
     saveSettings,
     closeSettings,
-    closeSettings2,
+  closeSettings2,
+  resetAllBtn,
     exportBtn,
     importBtn,
     importInput,
     refreshBtn,
     authBtn,
     authBarBtn,
-    dismissAuthBar,
     closeLogin,
     sendLinkBtn,
+    resendLinkBtn,
     signOutBtn,
     accountChip,
     moreBtn,
-    closeActions,
     editProjectBtn,
   } = elements;
 
@@ -127,7 +277,7 @@ function bindEvents() {
   document.addEventListener('keydown', onGlobalUndo);
 
   editEntriesBtn?.addEventListener('click', () => {
-    closeOverlay(elements.actionsOverlay);
+    closeActionsMenu();
     renderEntries();
     openOverlay(elements.drawer);
   });
@@ -135,7 +285,7 @@ function bindEvents() {
   closeEntries2?.addEventListener('click', () => closeOverlay(elements.drawer));
 
   const openSettingsPanel = () => {
-    closeOverlay(elements.actionsOverlay);
+    closeActionsMenu();
     if (elements.nameInput) elements.nameInput.value = state.project.name;
     if (elements.goalInput) elements.goalInput.value = state.project.goalWords;
     if (elements.startInput) elements.startInput.value = ymdUTC(state.project.startDate);
@@ -151,37 +301,70 @@ function bindEvents() {
   saveSettings?.addEventListener('click', onSaveSettings);
   closeSettings?.addEventListener('click', () => closeOverlay(elements.settingsPanel));
   closeSettings2?.addEventListener('click', () => closeOverlay(elements.settingsPanel));
+  resetAllBtn?.addEventListener('click', onResetAllData);
 
-  exportBtn?.addEventListener('click', onExportData);
-  importBtn?.addEventListener('click', () => importInput?.click());
+  exportBtn?.addEventListener('click', () => {
+    closeActionsMenu();
+    onExportData();
+  });
+  importBtn?.addEventListener('click', () => {
+    closeActionsMenu();
+    importInput?.click();
+  });
   importInput?.addEventListener('change', onImportData);
 
-  refreshBtn?.addEventListener('click', refreshFromServer);
+  refreshBtn?.addEventListener('click', () => {
+    closeActionsMenu();
+    refreshFromServer();
+  });
 
   moreBtn?.addEventListener('click', () => {
     updateSyncStatus();
-    openOverlay(elements.actionsOverlay);
+    toggleActionsMenu();
   });
-  closeActions?.addEventListener('click', () => closeOverlay(elements.actionsOverlay));
+
+  const secretModeTrigger = (event) => {
+    if (!event.altKey) return;
+    event.preventDefault();
+    promptStorageModeSwap();
+  };
+
+  elements.syncStatus?.addEventListener('click', secretModeTrigger);
+  elements.drawerSyncStatus?.addEventListener('click', secretModeTrigger);
+  elements.syncStatus?.setAttribute('title', 'Alt/Option-click to toggle offline mode');
+  elements.drawerSyncStatus?.setAttribute('title', 'Alt/Option-click to toggle offline mode');
 
   authBtn?.addEventListener('click', () => openOverlay(elements.loginPanel));
   accountChip?.addEventListener('click', () => openOverlay(elements.loginPanel));
   authBarBtn?.addEventListener('click', () => openOverlay(elements.loginPanel));
-  dismissAuthBar?.addEventListener('click', () => {
-    if (elements.authBar) elements.authBar.style.display = 'none';
-    localStorage.setItem('authbar_dismissed', '1');
+  closeLogin?.addEventListener('click', () => {
+    if (elements.loginPanel?.dataset.locked === 'true') return;
+    closeOverlay(elements.loginPanel);
   });
-  closeLogin?.addEventListener('click', () => closeOverlay(elements.loginPanel));
   sendLinkBtn?.addEventListener('click', onSendLink);
+  resendLinkBtn?.addEventListener('click', () => {
+    if (!pendingEmail) {
+      const email = (elements.emailInput?.value || '').trim();
+      if (email) pendingEmail = email;
+    }
+    if (pendingEmail) sendMagicLink(pendingEmail);
+  });
+  elements.emailInput?.addEventListener('input', () => {
+    if (loginPending) {
+      loginPending = false;
+      pendingEmail = '';
+      updateLoginPendingUI();
+    }
+  });
   signOutBtn?.addEventListener('click', onSignOut);
+
 
   setupTimeWarp(
     {
       warpToggle: elements.warpToggle,
       warpDate: elements.warpDate,
       viewBadge: elements.viewBadge,
-      warpOverlay: elements.warpOverlay,
-      closeWarp: elements.closeWarp,
+      warpPopover: elements.warpPopover,
       currentDateInfo: elements.currentDateInfo,
     },
     update
@@ -192,6 +375,130 @@ function populateThemeSelect() {
   if (!elements.themeSelect) return;
   elements.themeSelect.innerHTML = THEMES.map(({ id, label }) => `<option value="${id}">${label}</option>`).join('');
   elements.themeSelect.value = state.theme;
+}
+
+function promptStorageModeSwap() {
+  if (isCloudMode()) {
+    const ok = confirm(
+      'Switch to offline mode? This keeps data only in this browser and disables syncing until you return to cloud.'
+    );
+    if (!ok) return;
+    activateMode(MODES.LOCAL);
+    flashToast(elements.toast, 'Offline mode enabled');
+  } else {
+    if (!supabase) {
+      flashToast(elements.toast, 'Cloud sync not configured');
+      return;
+    }
+    const ok = confirm('Switch back to cloud sync? You will need to sign in to resume syncing.');
+    if (!ok) return;
+    activateMode(MODES.CLOUD);
+    if (!user) {
+      setAppInteractivity(false);
+      openOverlay(elements.loginPanel);
+      flashToast(elements.toast, 'Sign in to enable cloud sync');
+    } else {
+      flashToast(elements.toast, 'Cloud sync ready');
+    }
+  }
+}
+
+function activateMode(nextMode, { initial = false } = {}) {
+  if (nextMode !== MODES.LOCAL && nextMode !== MODES.CLOUD) {
+    console.warn('Unknown mode', nextMode);
+    return;
+  }
+  if (nextMode === MODES.CLOUD && !supabase) {
+    flashToast(elements.toast, 'Cloud sync not configured');
+    activeMode = MODES.LOCAL;
+    setStoredMode(MODES.LOCAL);
+    resetProjectData();
+    loadLocalState();
+    lastSyncedAt = null;
+    updateSyncStatus();
+    updateAuthUI();
+    update();
+    return;
+  }
+  closeActionsMenu();
+  loginPending = false;
+  pendingEmail = '';
+  updateLoginPendingUI();
+  clearRealtime();
+  activeMode = nextMode;
+  setStoredMode(nextMode);
+  if (isLocalMode()) {
+    resetProjectData();
+    loadLocalState();
+    lastSyncedAt = null;
+    projectId = null;
+    serverEntriesSnapshot = { ...state.entries };
+  } else {
+    resetProjectData();
+    projectId = null;
+    lastSyncedAt = null;
+    serverEntriesSnapshot = {};
+  }
+  updateSyncStatus();
+  updateAuthUI();
+  update();
+  if (!initial) {
+    if (isCloudMode()) {
+      if (user) {
+        bootAfterAuth().catch((err) => console.error(err));
+      } else {
+        openOverlay(elements.loginPanel);
+      }
+    } else {
+      }
+  } else if (isCloudMode() && user) {
+    bootAfterAuth().catch((err) => console.error(err));
+  } else if (isCloudMode() && !user) {
+    setAppInteractivity(false);
+    openOverlay(elements.loginPanel);
+  }
+}
+
+function onResetAllData() {
+  const confirmation = confirm(
+    'This will erase the entire project: name, goals, date range, baseline, and every word entry on this device. If you are signed in, the synced copy will be cleared too.\n\nThis cannot be undone. Continue?'
+  );
+  if (!confirmation) return;
+
+  history.clear?.();
+  resetProjectData();
+  state.entries = {};
+  state.timeWarp = null;
+  serverEntriesSnapshot = {};
+  lastSyncedAt = null;
+  if (elements.addWordsInput) elements.addWordsInput.value = '';
+  savePreferences();
+  localStorage.removeItem(STORAGE_KEY);
+  if (isLocalMode()) {
+    saveLocalState();
+    if (elements.authBar) elements.authBar.style.display = 'flex';
+  }
+  if (isRemote()) {
+    const resetTasks = [
+      supabase.from('word_events').delete().eq('project_id', projectId),
+      syncProjectSettings(),
+    ];
+    Promise.all(resetTasks)
+      .then(() => {
+        lastSyncedAt = new Date();
+        updateSyncStatus();
+        flashToast(elements.toast, 'Project reset. Cloud data cleared.');
+      })
+      .catch((err) => {
+        console.error('Reset sync failed', err);
+        flashToast(elements.toast, 'Cloud reset hit an error; reload recommended.');
+      });
+  } else {
+    flashToast(elements.toast, 'Project reset.');
+  }
+  update();
+  closeActionsMenu();
+  closeOverlay(elements.settingsPanel);
 }
 
 function onAddWords() {
@@ -341,26 +648,28 @@ function updateMotivationBanner(series) {
     return;
   }
 
-  const today = new Date();
+  const viewingYMD = viewingDay();
+  const viewingDate = parseYMD(viewingYMD);
   const start = parseYMD(days[0]);
   const end = parseYMD(days[days.length - 1]);
   const totalDays = days.length;
   const totalWritten = cumulative[cumulative.length - 1] ?? baseline;
+  const msPerDay = 86400000;
 
-  if (today < start) {
-    const daysUntil = Math.ceil((start - today) / 86400000);
+  if (viewingDate < start) {
+    const daysUntil = Math.ceil((start - viewingDate) / msPerDay);
     banner.textContent = `Sprint starts in ${daysUntil} day${daysUntil === 1 ? '' : 's'} • Goal ${state.project.goalWords.toLocaleString()} words`;
     return;
   }
 
-  if (today > end) {
+  if (viewingDate > end) {
     banner.textContent = `Sprint finished • ${totalWritten.toLocaleString()} words written`;
     return;
   }
 
-  const todayYMD = ymdUTC(today);
-  const dayIndex = days.indexOf(todayYMD);
-  const dayNumber = dayIndex === -1 ? Math.min(totalDays, Math.floor((today - start) / 86400000) + 1) : dayIndex + 1;
+  const viewingUtcYMD = ymdUTC(viewingDate);
+  const dayIndex = days.indexOf(viewingUtcYMD);
+  const dayNumber = dayIndex === -1 ? Math.min(totalDays, Math.floor((viewingDate - start) / msPerDay) + 1) : dayIndex + 1;
   const clampedDay = Math.min(totalDays, Math.max(1, dayNumber));
   const actualTotal = dayIndex === -1 ? cumulative[Math.min(cumulative.length - 1, clampedDay)] : cumulative[dayIndex + 1];
 
@@ -437,9 +746,11 @@ function renderEntries() {
 
 function applyTheme(nextTheme = state.theme) {
   const theme = normalizeTheme(nextTheme);
+  const changed = state.theme !== theme;
   state.theme = theme;
   document.body.dataset.theme = theme;
   document.documentElement.style.colorScheme = ['midnight', 'charcoal'].includes(theme) ? 'dark' : 'light';
+  if (changed) savePreferences();
 }
 
 function setAddEnabled() {
@@ -452,7 +763,7 @@ function setAddEnabled() {
 
 function update() {
   applyTheme();
-  syncTimeWarpControls(elements.warpToggle, elements.warpDate, elements.viewBadge);
+  syncTimeWarpControls(elements.warpToggle, elements.warpDate, elements.viewBadge, elements.currentDateInfo);
   updateCurrentDateDisplay(elements.currentDateInfo);
   const series = computeSeries();
   renderHeader();
@@ -460,14 +771,22 @@ function update() {
   updateMotivationBanner(series);
   chartRenderer.renderChart(series, { viewingDay, project: state.project });
   setAddEnabled();
-  saveState();
+  if (isLocalMode()) saveLocalState();
   updateSyncStatus();
+  if (actionsMenuVisible) updateActionsMenuPosition();
 }
 
 function refreshSyncLabel() {
-  const label = isRemote()
-    ? lastSyncedAt ? `Synced ${formatRelative(lastSyncedAt)}` : 'Not synced yet'
-    : 'Local mode';
+  let label = 'Choose mode';
+  if (isCloudMode()) {
+    if (user) {
+      label = lastSyncedAt ? `Synced ${formatRelative(lastSyncedAt)}` : 'Not synced yet';
+    } else {
+      label = 'Sign in to sync';
+    }
+  } else if (isLocalMode()) {
+    label = 'Offline mode';
+  }
   if (elements.syncStatus) elements.syncStatus.textContent = label;
   if (elements.drawerSyncStatus) elements.drawerSyncStatus.textContent = label;
 }
@@ -529,13 +848,16 @@ function onSaveSettings() {
 }
 
 function onExportData() {
-  const data = new Blob([localStorage.getItem(STORAGE_KEY) || '{}'], {
+  const payload = buildExportPayload();
+  const data = new Blob([JSON.stringify(payload, null, 2)], {
     type: 'application/json',
   });
   const url = URL.createObjectURL(data);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'nanotracker.json';
+  const stamp = new Date().toISOString().slice(0, 10);
+  const suffix = payload.meta.mode === MODES.CLOUD ? 'cloud' : 'offline';
+  a.download = `wordtracker-${suffix}-${stamp}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -544,23 +866,97 @@ function onImportData(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const parsed = JSON.parse(String(reader.result || '{}'));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-      loadState();
-      update();
-      if (isRemote()) {
-        flashToast(elements.toast, 'Imported locally; edit a day to sync delta');
-      } else {
-        flashToast(elements.toast, 'Import complete');
-      }
-    } catch {
-      alert('Invalid JSON.');
+      await applyImportedData(parsed);
+    } catch (err) {
+      console.error('import failed', err);
+      const message = err instanceof Error ? err.message : 'Import failed. Check the JSON file.';
+      flashToast(elements.toast, message);
     }
   };
   reader.readAsText(file);
   event.target.value = '';
+}
+
+function buildExportPayload() {
+  return {
+    project: {
+      name: state.project.name,
+      goalWords: state.project.goalWords,
+      startDate: ymdUTC(state.project.startDate),
+      endDate: ymdUTC(state.project.endDate),
+      baselineWords: state.project.baselineWords,
+    },
+    entries: { ...state.entries },
+    meta: {
+      mode: activeMode,
+      theme: state.theme,
+      timeWarp: state.timeWarp,
+      exportedAt: new Date().toISOString(),
+    },
+  };
+}
+
+async function applyImportedData(data) {
+  if (!data || typeof data !== 'object') throw new Error('Invalid JSON payload');
+  if (isCloudMode() && !isRemote()) {
+    throw new Error('Sign in before importing when cloud sync is enabled.');
+  }
+  const project = data.project || {};
+  const entries = data.entries && typeof data.entries === 'object' ? data.entries : {};
+  const meta = data.meta || {};
+  resetProjectData();
+  if (typeof project.name === 'string' && project.name.trim()) state.project.name = project.name.trim();
+  if (typeof project.goalWords === 'number' && project.goalWords > 0) state.project.goalWords = Math.floor(project.goalWords);
+  if (typeof project.baselineWords === 'number' && project.baselineWords >= 0) {
+    state.project.baselineWords = Math.floor(project.baselineWords);
+  }
+  if (typeof project.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(project.startDate)) {
+    state.project.startDate = parseYMD(project.startDate);
+  }
+  if (typeof project.endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(project.endDate)) {
+    state.project.endDate = parseYMD(project.endDate);
+  }
+  const importedEntries = {};
+  Object.entries(entries).forEach(([key, value]) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(key)) {
+      const num = Number(value) || 0;
+      importedEntries[key] = num;
+    }
+  });
+  state.entries = importedEntries;
+  if (meta.theme) state.theme = normalizeTheme(meta.theme);
+  state.timeWarp = typeof meta.timeWarp === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(meta.timeWarp) ? meta.timeWarp : null;
+  savePreferences();
+  update();
+  if (isLocalMode()) {
+    saveLocalState();
+    flashToast(elements.toast, 'Import complete (offline)');
+    return;
+  }
+  if (!isRemote()) {
+    flashToast(elements.toast, 'Sign in to import into the cloud');
+    return;
+  }
+  try {
+    await syncProjectSettings();
+    const prior = { ...serverEntriesSnapshot };
+    const allDays = new Set([...Object.keys(prior), ...Object.keys(state.entries)]);
+    for (const day of allDays) {
+      const target = Number(state.entries[day] || 0);
+      await syncDayTotalNow(day, prior[day] ?? 0, target, { force: true });
+    }
+    serverEntriesSnapshot = { ...state.entries };
+    update();
+    lastSyncedAt = new Date();
+    updateSyncStatus();
+    flashToast(elements.toast, 'Imported data synced to cloud');
+  } catch (err) {
+    console.error('cloud import sync failed', err);
+    flashToast(elements.toast, 'Cloud import failed; data kept locally');
+  }
 }
 
 function initializeSupabase() {
@@ -581,7 +977,7 @@ function initializeSupabase() {
 let user = null;
 
 function isRemote() {
-  return !!(supabase && user);
+  return isCloudMode() && !!(supabase && user);
 }
 
 function onSendLink() {
@@ -590,52 +986,107 @@ function onSendLink() {
     elements.emailInput?.focus();
     return;
   }
-  signIn(email);
+  pendingEmail = email;
+  loginPending = true;
+  updateLoginPendingUI();
+  sendMagicLink(email);
 }
 
-async function signIn(email) {
+async function sendMagicLink(email) {
   if (!supabase) {
     flashToast(elements.toast, 'Cloud sync not configured');
+    loginPending = false;
+    updateLoginPendingUI();
     return;
   }
-  await supabase.auth.signInWithOtp({ email });
-  flashToast(elements.toast, 'Check your email for the magic link');
+  try {
+    await supabase.auth.signInWithOtp({ email });
+    if (!pendingEmail) pendingEmail = email;
+    loginPending = true;
+    updateLoginPendingUI();
+    flashToast(elements.toast, 'Check your email for the magic link');
+  } catch (err) {
+    console.error('signInWithOtp', err);
+    loginPending = false;
+    updateLoginPendingUI();
+    flashToast(elements.toast, 'Could not send magic link. Try again.');
+  }
 }
 
 async function onSignOut() {
   if (!supabase) return;
   await supabase.auth.signOut();
-  closeOverlay(elements.loginPanel);
-  flashToast(elements.toast, 'Signed out');
+  loginPending = false;
+  updateLoginPendingUI();
+  clearRealtime();
+  projectId = null;
+  state.timeWarp = null;
+  savePreferences();
+  localStorage.removeItem(STORAGE_KEY);
+  activateMode(MODES.CLOUD);
+  flashToast(elements.toast, 'Signed out. Sign in to continue syncing.');
 }
 
 function updateAuthUI() {
   const signedIn = !!user;
-  if (elements.authBtn) {
-    elements.authBtn.textContent = 'Sign in';
-    elements.authBtn.style.display = signedIn ? 'none' : 'inline-flex';
+  const cloudActive = !!supabase && isCloudMode();
+  const requiresAuth = cloudActive && !signedIn;
+
+  if (!cloudActive) {
+    setAppInteractivity(true);
+    if (elements.authBtn) elements.authBtn.style.display = 'none';
+    if (elements.authBar) elements.authBar.style.display = 'none';
+    if (elements.accountChip) elements.accountChip.style.display = 'none';
+    if (elements.accountEmail) elements.accountEmail.textContent = '';
+    if (elements.loginTitle) elements.loginTitle.textContent = 'Offline mode';
+    if (elements.signInPane) elements.signInPane.style.display = 'none';
+    if (elements.signedInPane) elements.signedInPane.style.display = 'none';
+    if (elements.refreshBtn) elements.refreshBtn.disabled = true;
+    if (elements.drawerSyncStatus) elements.drawerSyncStatus.textContent = 'Offline mode';
+    if (elements.acctEmail2) elements.acctEmail2.textContent = '';
+    if (elements.loginPanel) elements.loginPanel.dataset.locked = 'false';
+    if (elements.closeLogin) elements.closeLogin.style.display = 'inline-flex';
+    closeOverlay(elements.loginPanel);
+    loginPending = false;
+    pendingEmail = '';
+    updateLoginPendingUI();
+    updateSyncStatus();
+    return;
   }
-  if (elements.loginTitle) elements.loginTitle.textContent = signedIn ? 'Account' : 'Sign in to sync (optional)';
+
+  if (elements.loginTitle) elements.loginTitle.textContent = signedIn ? 'Account' : 'Sign in to sync';
   if (elements.signOutBtn) elements.signOutBtn.style.display = signedIn ? 'inline-flex' : 'none';
   if (elements.signInPane) elements.signInPane.style.display = signedIn ? 'none' : 'block';
   if (elements.signedInPane) elements.signedInPane.style.display = signedIn ? 'block' : 'none';
   if (elements.refreshBtn) elements.refreshBtn.disabled = !signedIn;
-  if (signedIn) {
-    if (elements.authBar) elements.authBar.style.display = 'none';
-    if (elements.accountChip) {
+  if (elements.authBtn) {
+    elements.authBtn.textContent = 'Sign in';
+    elements.authBtn.style.display = signedIn ? 'none' : 'inline-flex';
+    elements.authBtn.disabled = signedIn;
+  }
+  if (elements.authBar) elements.authBar.style.display = requiresAuth ? 'none' : (signedIn ? 'none' : 'flex');
+  if (elements.accountChip) {
+    if (signedIn) {
       elements.accountChip.style.display = 'inline-flex';
       if (elements.accountEmail) elements.accountEmail.textContent = user.email || 'signed-in';
-    }
-  } else {
-    if (elements.authBar) {
-      elements.authBar.style.display = localStorage.getItem('authbar_dismissed') ? 'none' : 'flex';
-    }
-    if (elements.accountChip) {
+    } else {
       elements.accountChip.style.display = 'none';
       if (elements.accountEmail) elements.accountEmail.textContent = '';
     }
   }
   if (elements.acctEmail2) elements.acctEmail2.textContent = signedIn ? (user?.email || '') : '';
+  if (elements.loginPanel) elements.loginPanel.dataset.locked = requiresAuth ? 'true' : 'false';
+  if (elements.closeLogin) elements.closeLogin.style.display = requiresAuth ? 'none' : 'inline-flex';
+  setAppInteractivity(signedIn);
+  if (requiresAuth) {
+    updateLoginPendingUI();
+    openOverlay(elements.loginPanel);
+  } else {
+    loginPending = false;
+    pendingEmail = '';
+    updateLoginPendingUI();
+    closeOverlay(elements.loginPanel);
+  }
   updateSyncStatus();
 }
 
@@ -742,10 +1193,7 @@ async function addEventRemote(ymd, delta, { skipLocal = false } = {}) {
 
 function subscribeRealtime() {
   if (!supabase || !projectId) return;
-  if (realtimeSub) {
-    supabase.removeChannel(realtimeSub);
-    realtimeSub = null;
-  }
+  clearRealtime();
   realtimeSub = supabase
     .channel('realtime:word_events')
     .on(
@@ -757,6 +1205,28 @@ function subscribeRealtime() {
       }
     )
     .subscribe();
+  projectRealtimeSub = supabase
+    .channel('realtime:projects')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'projects', filter: `id=eq.${projectId}` },
+      async () => {
+        await fetchProjectState();
+        update();
+      }
+    )
+    .subscribe();
+}
+
+function clearRealtime() {
+  if (realtimeSub) {
+    if (supabase) supabase.removeChannel(realtimeSub);
+    realtimeSub = null;
+  }
+  if (projectRealtimeSub) {
+    if (supabase) supabase.removeChannel(projectRealtimeSub);
+    projectRealtimeSub = null;
+  }
 }
 
 async function syncProjectSettings() {
@@ -817,8 +1287,9 @@ async function refreshFromServer() {
   }
 }
 
-async function syncDayTotalNow(ymd, expectedBase, target) {
+async function syncDayTotalNow(ymd, expectedBase, target, options = {}) {
   if (!isRemote() || !projectId) return;
+  const { force = false } = options;
   try {
     const { data, error } = await supabase
       .from('word_events')
@@ -827,7 +1298,7 @@ async function syncDayTotalNow(ymd, expectedBase, target) {
       .eq('ymd', ymd);
     if (error) throw error;
     const serverTotal = foldEvents(data || [])[ymd] || 0;
-    if (typeof expectedBase === 'number' && serverTotal !== expectedBase) {
+    if (!force && typeof expectedBase === 'number' && serverTotal !== expectedBase) {
       const proceed = confirm(
         `"${fmtMD(ymd)}" changed on another device (server has ${serverTotal.toLocaleString()} words). Overwrite with ${target.toLocaleString()}?`
       );

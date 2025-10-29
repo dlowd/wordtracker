@@ -5,6 +5,9 @@ export const pad = (n) => String(n).padStart(2, "0");
 export const ymdUTC = (date) =>
   `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 
+export const ymdLocal = (date) =>
+  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
 export function parseYMD(value) {
   const [Y, M, D] = String(value || "").split("-").map(Number);
   return new Date(Date.UTC(Y || 0, (M || 1) - 1, D || 1));

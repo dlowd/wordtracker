@@ -11,6 +11,7 @@ function focusableElements(root) {
 
 export function openOverlay(overlay) {
   if (!overlay) return;
+  if (overlay.classList.contains('show')) return;
   overlay.classList.add('show');
   overlay.addEventListener('click', onBackdrop);
   overlay.addEventListener('keydown', onOverlayKey);
@@ -44,6 +45,8 @@ export function closeOverlay(overlay) {
 }
 
 function onBackdrop(event) {
+  const overlay = /** @type {HTMLElement} */ (event.currentTarget);
+  if (overlay.dataset.locked === 'true') return;
   if (event.currentTarget === event.target) {
     closeOverlay(event.currentTarget);
   }
@@ -51,6 +54,8 @@ function onBackdrop(event) {
 
 function onOverlayKey(event) {
   if (event.key === 'Escape') {
+    const overlay = /** @type {HTMLElement} */ (event.currentTarget);
+    if (overlay.dataset.locked === 'true') return;
     closeOverlay(event.currentTarget);
   }
 }

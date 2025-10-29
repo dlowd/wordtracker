@@ -24,7 +24,7 @@
     </div>
     <div class="header-right">
       <span id="syncStatus" class="sync-chip" aria-live="polite">Local mode</span>
-      <button id="moreBtn" class="icon-btn" aria-label="More actions" title="More actions">⋯</button>
+      <button id="moreBtn" class="icon-btn" aria-label="More actions" title="More actions" aria-expanded="false" aria-controls="actionsMenu">⋯</button>
       <button id="authBtn" class="btn btn-primary">Sign in</button>
       <span id="accountChip" class="badge" style="display:none;cursor:pointer" title="View account">
   🔐 <span id="accountEmail"></span>
@@ -32,11 +32,37 @@
     </div>
   </div>
 
-  <!-- Optional auth prompt -->
+  <div id="actionsMenu" class="dropdown" role="menu" aria-hidden="true">
+    <section>
+      <h4>Sync &amp; account</h4>
+      <div class="actions-row">
+        <button id="refreshBtn" class="btn btn-quiet" role="menuitem">Sync now</button>
+        <span id="drawerSyncStatus" class="sync-chip" aria-live="polite">Local mode</span>
+      </div>
+    </section>
+    <section>
+      <h4>Data</h4>
+      <p class="action-note">Export downloads a JSON backup. Import restores a previous export.</p>
+      <div class="actions-row">
+        <button id="exportBtn" class="btn" role="menuitem">Export</button>
+        <button id="importBtn" class="btn" role="menuitem">Import</button>
+        <input id="importInput" type="file" accept="application/json" style="display:none">
+      </div>
+    </section>
+    <section>
+      <h4>Customize</h4>
+      <button id="openSettings" class="btn btn-quiet" role="menuitem">Project &amp; theme…</button>
+    </section>
+    <section>
+      <h4>Entries</h4>
+      <button id="editEntriesBtn" class="btn btn-quiet" role="menuitem">Edit entries…</button>
+    </section>
+  </div>
+
+  <!-- Auth prompt -->
   <div id="authbar" class="authbar" style="display:none">
-    <span>🔒 <strong>Optional sign‑in:</strong> Sync across devices and back up your data.</span>
+    <span>🔒 Sign in to protect your progress across devices.</span>
     <button id="authBarBtn" class="btn btn-primary">Sign in</button>
-    <button id="dismissAuthBar" class="btn btn-quiet">Not now</button>
   </div>
 
   <!-- Motivation banner -->
@@ -122,70 +148,20 @@
     </div>
   </div>
 
-  <!-- Time Warp overlay -->
-  <div id="warpOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="warpTitle">
-    <div class="panel" data-panel tabindex="-1">
-      <div class="sticky row" style="justify-content:space-between;align-items:center">
-        <h3 id="warpTitle" style="margin:0">Preview another day</h3>
-        <button id="closeWarp" class="btn">Close</button>
-      </div>
-      <div class="card" style="margin-top:12px;display:flex;flex-direction:column;gap:12px">
-        <div>
-          <div style="font-size:14px;color:var(--muted)">Current date</div>
-          <div id="currentDateInfo" style="font-size:16px;font-weight:600;color:var(--fg)"></div>
-        </div>
-        <div>
-          <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--fg)">
-            <input id="warpToggle" type="checkbox" aria-label="Enable preview mode">
-            Preview another day
-          </label>
-        </div>
-        <div>
-          <label for="warpDate">Preview date</label>
-          <input id="warpDate" type="date" aria-describedby="warpHelp">
-        </div>
-        <p id="warpHelp" style="font-size:13px;color:var(--muted);margin:0">When preview mode is on, totals and pacing update as if it were that date. Adding words targets the previewed day.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Actions overlay -->
-  <div id="actionsOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="actionsTitle">
-    <div class="panel actions-panel" data-panel tabindex="-1">
-      <div class="sticky row" style="justify-content:space-between;align-items:center">
-        <h3 id="actionsTitle" style="margin:0">Quick actions</h3>
-        <button id="closeActions" class="btn">Close</button>
-      </div>
-      <div class="actions-groups">
-        <section>
-          <h4>Sync &amp; account</h4>
-          <div class="actions-row">
-            <button id="refreshBtn" class="btn btn-quiet">Sync now</button>
-            <span id="drawerSyncStatus" class="sync-chip" aria-live="polite">Local mode</span>
-          </div>
-        </section>
-        <section>
-          <h4>Data</h4>
-          <div class="actions-row">
-            <button id="exportBtn" class="btn">Export</button>
-            <button id="importBtn" class="btn">Import</button>
-            <input id="importInput" type="file" accept="application/json" style="display:none">
-          </div>
-          <p class="action-note">Export downloads a JSON backup of your progress. Import restores from a previously exported file.</p>
-        </section>
-        <section>
-          <h4>Customize</h4>
-          <div class="actions-row">
-            <button id="openSettings" class="btn btn-quiet">Project &amp; theme…</button>
-          </div>
-        </section>
-        <section>
-          <h4>Entries</h4>
-          <div class="actions-row">
-            <button id="editEntriesBtn" class="btn btn-quiet">Edit entries…</button>
-          </div>
-        </section>
-      </div>
+  <!-- Time Warp popover -->
+  <div id="warpPopover" class="popover" role="dialog" aria-labelledby="warpTitle" aria-modal="false" aria-hidden="true">
+    <div class="popover-card">
+      <h3 id="warpTitle">Current date</h3>
+      <p id="currentDateInfo" class="muted"></p>
+      <label class="toggle-row">
+        <input id="warpToggle" type="checkbox" aria-label="Enable preview mode">
+        Preview another day
+      </label>
+      <label class="field">
+        <span>Preview date</span>
+        <input id="warpDate" type="date" aria-describedby="warpHelp">
+      </label>
+      <p id="warpHelp" class="muted">When preview mode is on, totals and pacing update as if it were that date. Adding words targets the previewed day.</p>
     </div>
   </div>
 
@@ -208,10 +184,10 @@
   </div>
 
   <!-- Login overlay (magic link) -->
-  <div id="login" class="overlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+  <div id="login" class="overlay" data-align="center" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
     <div class="panel" data-panel tabindex="-1">
       <div class="sticky row" style="justify-content:space-between">
-        <h3 id="loginTitle" style="margin:0">Sign in to sync (optional)</h3>
+        <h3 id="loginTitle" style="margin:0">Sign in to sync</h3>
       <button id="closeLogin" class="btn">Close</button>
       </div>
       <div class="card" style="margin-top:12px">
@@ -220,14 +196,15 @@
           <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
           <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
             <button id="sendLink" class="btn btn-primary">Send magic link</button>
+            <button id="resendLink" class="btn btn-quiet" style="display:none">Resend</button>
           </div>
-          <p style="font-size:13px;color:var(--muted);margin-top:10px">You can keep using the app without signing in. Sign in only if you want cloud backup and multi‑device sync.</p>
+          <p id="loginStatus" style="font-size:13px;color:var(--muted);margin-top:10px"></p>
         </div>
         <div id="signedInPane" style="display:none">
           <div id="acctInfo" style="font-size:13px;color:var(--muted);margin-bottom:12px">
             Signed in as <strong id="acctEmail"></strong>
           </div>
-          <p style="font-size:13px;color:var(--muted);margin:0 0 12px 0">Cloud sync is active on this device. Sign out if you want to switch accounts or return to offline mode.</p>
+          <p style="font-size:13px;color:var(--muted);margin:0 0 12px 0">Cloud sync is active on this device. Sign out to switch accounts.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button id="signOut" class="btn btn-quiet">Sign out</button>
           </div>

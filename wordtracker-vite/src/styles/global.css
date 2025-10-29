@@ -103,7 +103,7 @@ body{
   background:var(--page-bg, linear-gradient(180deg,#f0fdf4,#f8fafc 120vh));
   background-color:var(--bg);
 }
-.wrap{max-width:1000px;margin:0 auto;padding:16px}
+.wrap{max-width:1000px;margin:0 auto;padding:16px;position:relative}
 
 /* Header */
 .h1{font-family:"Literata",serif;font-weight:800;font-size:28px;letter-spacing:.2px;margin:0}
@@ -177,20 +177,42 @@ body{
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:14px}
 label{display:block;font-size:14px;color:var(--fg);margin-bottom:6px;font-weight:600}
 input[type="text"],input[type="number"],input[type="date"],input[type="email"],.select-input{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--fg)}
+input.is-disabled{opacity:.6;cursor:not-allowed;background:rgba(148,163,184,.1)}
 
-/* Actions overlay */
-.actions-panel h4{margin:0 0 8px 0;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-.actions-groups{display:flex;flex-direction:column;gap:18px;padding:8px 0}
+/* Actions dropdown */
+.dropdown{position:absolute;top:72px;right:24px;min-width:260px;max-width:320px;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 20px 50px rgba(2,6,23,.16);padding:16px;display:none;z-index:950}
+.dropdown.show{display:block}
+.dropdown section+section{margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+.dropdown h4{margin:0 0 6px 0;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
 .actions-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
-.actions-row .sync-chip{margin-left:4px}
-.action-note{margin:6px 0 0 0;font-size:12px;color:var(--muted)}
+.actions-row .sync-chip{margin-left:auto}
+.action-note{margin:0 0 8px 0;font-size:12px;color:var(--muted)}
+
+/* Popover */
+.popover{position:absolute;display:none;z-index:950}
+.popover.show{display:block}
+.popover-card{padding:16px;min-width:260px;max-width:320px;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 18px 40px rgba(2,6,23,.15);display:flex;flex-direction:column;gap:12px}
+.popover-card h3{margin:0;font-size:16px;font-weight:700;color:var(--fg)}
+.muted{color:var(--muted);font-size:13px;margin:0}
+.toggle-row{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--fg);margin:0}
+.toggle-row input{margin:0}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--fg)}
 
 /* Overlays (Settings, Entries, Login) */
 .overlay{position:fixed; inset:0; display:none; align-items:center; justify-content:flex-end; background:rgba(2,6,23,.35); z-index:1000}
+.overlay[data-align="center"]{justify-content:center}
 .overlay.show{display:flex}
-.panel{width:min(640px,95vw); max-height:100vh; overflow:auto; background:var(--card); border-left:1px solid var(--border); box-shadow:-12px 0 40px rgba(2,6,23,.12); padding:16px}
+.panel{width:min(640px,95vw); max-height:100vh; overflow:auto; background:var(--card); border-left:1px solid var(--border); box-shadow:-12px 0 40px rgba(2,6,23,.12); padding:16px;border-radius:0}
+.overlay[data-align="center"] .panel{width:min(520px,92vw);border:1px solid var(--border);border-left:none;border-radius:18px;box-shadow:0 24px 60px rgba(2,6,23,.22)}
 .sticky{position:sticky; top:0; background:var(--card); padding-bottom:8px; border-bottom:1px solid var(--border); z-index:2}
 .footer-sticky{position:sticky; bottom:0; background:var(--card); padding-top:8px; border-top:1px solid var(--border); z-index:2}
+.overlay[data-align="center"] .panel .sticky,
+.overlay[data-align="center"] .panel .footer-sticky{border-color:transparent;padding:0;margin-bottom:12px}
+
+.overlay[data-align="center"] .panel .footer-sticky{margin-top:20px}
+
+body.app-locked .wrap > :not(.overlay){pointer-events:none;filter: grayscale(.1) opacity(.85)}
+body.app-locked .wrap > .overlay{pointer-events:auto;filter:none}
 
 /* Entries list */
 .entries{display:grid;grid-template-columns:150px 1fr;gap:8px}
